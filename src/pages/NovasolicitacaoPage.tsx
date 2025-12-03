@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ASSUNTOS_CNMP, Priority, RequestType } from '@/types/request';
+import type { Request } from '@/types/request';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { Upload, X, FileText, ArrowLeft, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -21,27 +23,29 @@ const REQUEST_TYPES: RequestType[] = [
   'Apoio aos Órgãos de Execução - 1º Grau',
   'Apoio aos Órgãos de Execução - 2º Grau',
   'Atendimento ao Público',
+  'PGA de Políticas Públicas',
 ];
 
 const PRIORITIES: { value: Priority; label: string }[] = [
   { value: 'baixa', label: 'Baixa' },
   { value: 'media', label: 'Média' },
   { value: 'alta', label: 'Alta' },
-  { value: 'urgente', label: 'Urgente' },
 ];
 
 export default function NovaSolicitacaoPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const editRequest = (location.state as { request?: Request } | null)?.request;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [formData, setFormData] = useState({
-    orgaoSolicitante: '',
-    tipoSolicitacao: '' as RequestType | '',
-    numeroSEI: '',
-    numeroSIMP: '',
-    assunto: '',
-    descricao: '',
-    prioridade: 'media' as Priority,
+    orgaoSolicitante: editRequest?.orgaoSolicitante ?? '',
+    tipoSolicitacao: (editRequest?.tipoSolicitacao as RequestType | '') ?? ('' as RequestType | ''),
+    numeroSEI: editRequest?.numeroSEI ?? '',
+    numeroSIMP: editRequest?.numeroSIMP ?? '',
+    assunto: editRequest?.assunto ?? '',
+    descricao: editRequest?.descricao ?? '',
+    prioridade: (editRequest?.prioridade as Priority) ?? ('media' as Priority),
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,6 +57,36 @@ export default function NovaSolicitacaoPage() {
 
   const removeFile = (index: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const formatSEI = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 21);
+    const s1 = digits.slice(0, 2);
+    const s2 = digits.slice(2, 4);
+    const s3 = digits.slice(4, 8);
+    const s4 = digits.slice(8, 15);
+    const s5 = digits.slice(15, 19);
+    const s6 = digits.slice(19, 21);
+    let result = '';
+    if (s1) result += s1;
+    if (s2) result += '.' + s2;
+    if (s3) result += '.' + s3;
+    if (s4) result += '.' + s4;
+    if (s5) result += '/' + s5;
+    if (s6) result += '-' + s6;
+    return result;
+  };
+
+  const formatSIMP = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 13);
+    const s1 = digits.slice(0, 6);
+    const s2 = digits.slice(6, 9);
+    const s3 = digits.slice(9, 13);
+    let result = '';
+    if (s1) result += s1;
+    if (s2) result += '-' + s2;
+    if (s3) result += '/' + s3;
+    return result;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,16 +102,49 @@ export default function NovaSolicitacaoPage() {
     }
 
     setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    toast({
-      title: 'Solicitação enviada!',
-      description: 'Sua solicitação foi registrada com sucesso. Você pode acompanhá-la em "Minhas Solicitações".',
-    });
-    
-    navigate('/minhas-solicitacoes');
+    if (editRequest) {
+      const { error } = await supabase.from('requests').update({
+        orgaoSolicitante: formData.orgaoSolicitante,
+        tipoSolicitacao: formData.tipoSolicitacao as RequestType,
+        numeroSEI: formData.numeroSEI,
+        numeroSIMP: formData.numeroSIMP || null,
+        assunto: formData.assunto,
+        descricao: formData.descricao,
+        prioridade: formData.prioridade as Priority,
+        updatedAt: new Date().toISOString(),
+      }).eq('id', editRequest.id);
+      if (!error) {
+        toast({
+          title: 'Solicitação atualizada!',
+          description: 'As alterações foram salvas com sucesso.',
+        });
+        navigate('/gerenciar');
+      }
+    } else {
+      const now = new Date();
+      const insertPayload = {
+        orgaoSolicitante: formData.orgaoSolicitante,
+        tipoSolicitacao: formData.tipoSolicitacao as RequestType,
+        dataSolicitacao: now.toISOString().slice(0,10),
+        numeroSEI: formData.numeroSEI,
+        numeroSIMP: formData.numeroSIMP || null,
+        assunto: formData.assunto,
+        descricao: formData.descricao,
+        prioridade: formData.prioridade as Priority,
+        status: 'pendente' as const,
+        posicaoFila: null,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      };
+      const { data, error } = await supabase.from('requests').insert(insertPayload).select('id').single();
+      if (!error) {
+        toast({
+          title: 'Solicitação enviada!',
+          description: 'Sua solicitação foi registrada com sucesso. Você pode acompanhá-la em "Minhas Solicitações".',
+        });
+        navigate('/minhas-solicitacoes');
+      }
+    }
   };
 
   return (
@@ -94,10 +161,10 @@ export default function NovaSolicitacaoPage() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold font-display text-foreground">
-            Nova Solicitação
+            {editRequest ? 'Editar Solicitação' : 'Nova Solicitação'}
           </h1>
           <p className="text-muted-foreground">
-            Preencha os campos abaixo para registrar sua demanda
+            {editRequest ? 'Atualize os campos da solicitação selecionada' : 'Preencha os campos abaixo para registrar sua demanda'}
           </p>
         </div>
       </div>
@@ -113,19 +180,6 @@ export default function NovaSolicitacaoPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Órgão Solicitante */}
-            <div className="space-y-2">
-              <Label htmlFor="orgao">Órgão Solicitante *</Label>
-              <Input
-                id="orgao"
-                placeholder="Ex.: Promotoria de Justiça de Teresina"
-                value={formData.orgaoSolicitante}
-                onChange={(e) =>
-                  setFormData({ ...formData, orgaoSolicitante: e.target.value })
-                }
-              />
-            </div>
-
             {/* Tipo de Solicitação */}
             <div className="space-y-2">
               <Label>Tipo de Solicitação *</Label>
@@ -148,29 +202,44 @@ export default function NovaSolicitacaoPage() {
               </Select>
             </div>
 
+            {/* Órgão Solicitante */}
+            <div className="space-y-2">
+              <Label htmlFor="orgao">Órgão Solicitante *</Label>
+              <Input
+                id="orgao"
+                placeholder="Ex.: Promotoria de Justiça de Teresina"
+                value={formData.orgaoSolicitante}
+                onChange={(e) =>
+                  setFormData({ ...formData, orgaoSolicitante: e.target.value })
+                }
+              />
+            </div>
+
             {/* SEI e SIMP */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="sei">Número do SEI *</Label>
-                <Input
-                  id="sei"
-                  placeholder="Ex.: 2025.0001.000123"
-                  value={formData.numeroSEI}
-                  onChange={(e) =>
-                    setFormData({ ...formData, numeroSEI: e.target.value })
-                  }
-                />
+              <Label htmlFor="sei">Número do SEI *</Label>
+              <Input
+                id="sei"
+                placeholder="Ex.: 12.34.2025.0001234/0001-01"
+                value={formData.numeroSEI}
+                maxLength={26}
+                onChange={(e) =>
+                  setFormData({ ...formData, numeroSEI: formatSEI(e.target.value) })
+                }
+              />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="simp">Número do SIMP</Label>
-                <Input
-                  id="simp"
-                  placeholder="Ex.: SIMP-2025-001"
-                  value={formData.numeroSIMP}
-                  onChange={(e) =>
-                    setFormData({ ...formData, numeroSIMP: e.target.value })
-                  }
-                />
+              <Label htmlFor="simp">Número do SIMP</Label>
+              <Input
+                id="simp"
+                placeholder="Ex.: 123456-789/2025"
+                value={formData.numeroSIMP}
+                maxLength={15}
+                onChange={(e) =>
+                  setFormData({ ...formData, numeroSIMP: formatSIMP(e.target.value) })
+                }
+              />
               </div>
             </div>
 

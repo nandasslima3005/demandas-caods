@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { mockRequests } from '@/data/mockData';
+import { supabase } from '@/integrations/supabase/client';
+import type { Tables } from '@/integrations/supabase/types';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { PriorityBadge } from '@/components/ui/priority-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,12 +21,27 @@ import { Search, Filter, ArrowRight, FilePlus, SlidersHorizontal } from 'lucide-
 import { cn } from '@/lib/utils';
 
 export default function MinhasSolicitacoesPage() {
+  const FILTERABLE_STATUSES: Status[] = ['pendente', 'em_analise', 'concluido'];
+  const FILTERABLE_PRIORITIES: Priority[] = ['baixa', 'media', 'alta'];
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
 
-  const filteredRequests = mockRequests.filter((request) => {
+  const [requests, setRequests] = useState<Tables<'requests'>[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from('requests')
+        .select('*')
+        .order('createdAt', { ascending: false });
+      setRequests((data ?? []) as Tables<'requests'>[]);
+    };
+    load();
+  }, []);
+
+  const filteredRequests = requests.filter((request) => {
     const matchesSearch =
       request.assunto.toLowerCase().includes(searchTerm.toLowerCase()) ||
       request.orgaoSolicitante.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -93,9 +109,9 @@ export default function MinhasSolicitacoesPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os Status</SelectItem>
-                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                    {FILTERABLE_STATUSES.map((value) => (
                       <SelectItem key={value} value={value}>
-                        {label}
+                        {STATUS_LABELS[value]}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -111,9 +127,9 @@ export default function MinhasSolicitacoesPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas as Prioridades</SelectItem>
-                    {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                    {FILTERABLE_PRIORITIES.map((value) => (
                       <SelectItem key={value} value={value}>
-                        {label}
+                        {PRIORITY_LABELS[value]}
                       </SelectItem>
                     ))}
                   </SelectContent>

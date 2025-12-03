@@ -4,7 +4,8 @@ export type Status = 'pendente' | 'em_analise' | 'em_andamento' | 'aguardando_re
 export type RequestType = 
   | 'Apoio aos Órgãos de Execução - 1º Grau'
   | 'Apoio aos Órgãos de Execução - 2º Grau'
-  | 'Atendimento ao Público';
+  | 'Atendimento ao Público'
+  | 'PGA de Políticas Públicas';
 
 export interface TimelineEvent {
   id: string;
@@ -53,31 +54,20 @@ export interface DashboardStats {
 }
 
 export const ASSUNTOS_CNMP = [
-  'Acesso à Saúde',
-  'Atenção Básica',
+  'Atenção Primária à Saúde',
   'Atenção Especializada',
-  'Assistência Farmacêutica',
-  'Auditoria em Saúde',
+  'Fornecimento de Medicamentos',
+  'Fornecimento de Insumos',
+  'Financiamento do SUS',
   'Controle Social',
-  'Educação em Saúde',
-  'Epidemiologia',
-  'Financiamento da Saúde',
-  'Gestão do SUS',
-  'Humanização',
-  'Judicialização da Saúde',
-  'Medicamentos',
-  'Planos de Saúde',
-  'Política de Saúde',
-  'Regulação em Saúde',
-  'Saúde Bucal',
-  'Saúde da Criança',
-  'Saúde da Família',
-  'Saúde da Mulher',
-  'Saúde do Idoso',
-  'Saúde do Trabalhador',
-  'Saúde Mental',
-  'Vigilância Sanitária',
-  'Vigilância Epidemiológica',
+  'Transporte',
+  'Vigilância em Saúde',
+  'Regulação - consulta e exames',
+  'Regulação - hospitalar/urgência',
+  'Cirurgia Eletiva',
+  'Projetos',
+  'Oncologia',
+  'Outros',
 ];
 
 export const STATUS_LABELS: Record<Status, string> = {

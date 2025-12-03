@@ -1,7 +1,8 @@
 import { StatCard } from '@/components/ui/stat-card';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { PriorityBadge } from '@/components/ui/priority-badge';
-import { mockRequests, mockStats } from '@/data/mockData';
+import { supabase } from '@/integrations/supabase/client';
+import type { Tables } from '@/integrations/supabase/types';
 import {
   FileText,
   Clock,
@@ -16,9 +17,30 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useEffect, useState } from 'react';
 
 export default function Dashboard() {
-  const recentRequests = mockRequests.slice(0, 4);
+  const [stats, setStats] = useState({ total: 0, pendentes: 0, emAnalise: 0, emAndamento: 0, concluidos: 0, urgentes: 0 });
+  const [recentRequests, setRecentRequests] = useState<Tables<'requests'>[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from('requests')
+        .select('*')
+        .order('createdAt', { ascending: false });
+      const rows = (data ?? []) as Tables<'requests'>[];
+      setRecentRequests(rows.slice(0, 4));
+      const total = rows.length;
+      const pendentes = rows.filter((r) => r.status === 'pendente').length;
+      const emAnalise = rows.filter((r) => r.status === 'em_analise').length;
+      const emAndamento = rows.filter((r) => r.status === 'em_andamento').length;
+      const concluidos = rows.filter((r) => r.status === 'concluido').length;
+      const urgentes = rows.filter((r) => r.prioridade === 'urgente').length;
+      setStats({ total, pendentes, emAnalise, emAndamento, concluidos, urgentes });
+    };
+    load();
+  }, []);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -43,37 +65,37 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           title="Total"
-          value={mockStats.total}
+          value={stats.total}
           icon={FileText}
           variant="default"
         />
         <StatCard
           title="Pendentes"
-          value={mockStats.pendentes}
+          value={stats.pendentes}
           icon={Clock}
           variant="warning"
         />
         <StatCard
           title="Em Análise"
-          value={mockStats.emAnalise}
+          value={stats.emAnalise}
           icon={FileSearch}
           variant="info"
         />
         <StatCard
           title="Em Andamento"
-          value={mockStats.emAndamento}
+          value={stats.emAndamento}
           icon={Loader2}
           variant="primary"
         />
         <StatCard
           title="Concluídos"
-          value={mockStats.concluidos}
+          value={stats.concluidos}
           icon={CheckCircle2}
           variant="success"
         />
         <StatCard
           title="Urgentes"
-          value={mockStats.urgentes}
+          value={stats.urgentes}
           icon={AlertTriangle}
           variant="destructive"
         />

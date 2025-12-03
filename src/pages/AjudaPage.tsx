@@ -106,18 +106,18 @@ export default function AjudaPage() {
           <div className="grid gap-4 sm:grid-cols-3">
             <Button variant="outline" className="h-auto py-4 flex-col gap-2">
               <Mail className="h-5 w-5 text-primary" />
-              <span className="text-sm">Email</span>
-              <span className="text-xs text-muted-foreground">suporte@cao.mp.pi.gov.br</span>
+              <span className="text-sm">E-mail</span>
+              <span className="text-xs text-muted-foreground">caods@mppi.mp.br</span>
             </Button>
             <Button variant="outline" className="h-auto py-4 flex-col gap-2">
               <Phone className="h-5 w-5 text-primary" />
               <span className="text-sm">Telefone</span>
-              <span className="text-xs text-muted-foreground">(86) 3216-4500</span>
+              <span className="text-xs text-muted-foreground">(86) 2222-8156</span>
             </Button>
             <Button variant="outline" className="h-auto py-4 flex-col gap-2">
               <MessageCircle className="h-5 w-5 text-primary" />
               <span className="text-sm">Chat</span>
-              <span className="text-xs text-muted-foreground">Seg-Sex, 8h-18h</span>
+              <span className="text-xs text-muted-foreground">Seg-Sex, 8h-15h</span>
             </Button>
           </div>
         </CardContent>

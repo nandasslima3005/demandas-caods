@@ -4,8 +4,36 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { User, Mail, Phone, Building2, Shield } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useEffect, useState } from 'react';
 
 export default function PerfilPage() {
+  const [profile, setProfile] = useState({ name: 'Maria Silva', email: 'maria.silva@email.com', phone: '(86) 99999-9999', orgao: 'Promotoria de Justiça de Teresina' });
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase.from('profiles').select('*').limit(1).single();
+      if (data) {
+        setProfile({
+          name: data.name,
+          email: data.email,
+          phone: data.phone ?? '',
+          orgao: data.orgao ?? '',
+        });
+      }
+    };
+    load();
+  }, []);
+
+  const save = async () => {
+    const { data } = await supabase.from('profiles').select('id').limit(1).single();
+    if (data?.id) {
+      await supabase.from('profiles').update({ name: profile.name, email: profile.email, phone: profile.phone, orgao: profile.orgao, updated_at: new Date().toISOString() }).eq('id', data.id);
+    } else {
+      await supabase.from('profiles').insert({ name: profile.name, email: profile.email, phone: profile.phone, orgao: profile.orgao });
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
       {/* Header */}
@@ -28,7 +56,7 @@ export default function PerfilPage() {
               </span>
             </div>
             <div className="text-center sm:text-left">
-              <h2 className="text-xl font-bold font-display">Maria Silva</h2>
+              <h2 className="text-xl font-bold font-display">{profile.name}</h2>
               <p className="text-muted-foreground">Usuário Externo</p>
               <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start">
                 <Shield className="h-4 w-4 text-primary" />
@@ -52,45 +80,28 @@ export default function PerfilPage() {
               <Label htmlFor="nome">Nome Completo</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="nome"
-                  defaultValue="Maria Silva"
-                  className="pl-9"
-                />
+                <Input id="nome" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} className="pl-9" />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  defaultValue="maria.silva@email.com"
-                  className="pl-9"
-                />
+                <Input id="email" type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} className="pl-9" />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="telefone">Telefone</Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="telefone"
-                  defaultValue="(86) 99999-9999"
-                  className="pl-9"
-                />
+                <Input id="telefone" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="pl-9" />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="orgao">Órgão/Unidade</Label>
               <div className="relative">
                 <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="orgao"
-                  defaultValue="Promotoria de Justiça de Teresina"
-                  className="pl-9"
-                />
+                <Input id="orgao" value={profile.orgao} onChange={(e) => setProfile({ ...profile, orgao: e.target.value })} className="pl-9" />
               </div>
             </div>
           </div>
@@ -99,7 +110,7 @@ export default function PerfilPage() {
 
           <div className="flex justify-end gap-3">
             <Button variant="outline">Cancelar</Button>
-            <Button className="gradient-primary border-0">Salvar Alterações</Button>
+            <Button className="gradient-primary border-0" onClick={save}>Salvar Alterações</Button>
           </div>
         </CardContent>
       </Card>

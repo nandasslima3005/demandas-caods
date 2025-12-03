@@ -1,5 +1,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { mockRequests } from '@/data/mockData';
+import { supabase } from '@/integrations/supabase/client';
+import { useEffect, useState } from 'react';
+import type { Tables } from '@/integrations/supabase/types';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { PriorityBadge } from '@/components/ui/priority-badge';
 import { Timeline } from '@/components/ui/timeline';
@@ -22,8 +24,26 @@ import {
 export default function SolicitacaoDetalhesPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [request, setRequest] = useState<Tables<'requests'> | null>(null);
+  const [attachments, setAttachments] = useState<Tables<'attachments'>[]>([]);
+  const [timeline, setTimeline] = useState<Tables<'timeline_events'>[]>([]);
 
-  const request = mockRequests.find((r) => r.id === id);
+  useEffect(() => {
+    const load = async () => {
+      if (!id) return;
+      const { data } = await supabase.from('requests').select('*').eq('id', id).single();
+      setRequest((data ?? null) as Tables<'requests'> | null);
+      const { data: att } = await supabase.from('attachments').select('*').eq('requestId', id);
+      setAttachments((att ?? []) as Tables<'attachments'>[]);
+      const { data: tl } = await supabase
+        .from('timeline_events')
+        .select('*')
+        .eq('requestId', id)
+        .order('date', { ascending: true });
+      setTimeline((tl ?? []) as Tables<'timeline_events'>[]);
+    };
+    load();
+  }, [id]);
 
   if (!request) {
     return (
@@ -136,7 +156,7 @@ export default function SolicitacaoDetalhesPage() {
                   <div>
                     <p className="text-xs text-muted-foreground">Data da Solicitação</p>
                     <p className="font-medium">
-                      {format(new Date(request.dataSolicitacao), 'dd/MM/yyyy', { locale: ptBR })}
+              {format(new Date(request.dataSolicitacao), 'dd/MM/yyyy', { locale: ptBR })}
                     </p>
                   </div>
                 </div>
@@ -169,7 +189,7 @@ export default function SolicitacaoDetalhesPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Timeline events={request.timeline} />
+              <Timeline events={timeline.map((e) => ({ id: e.id, date: e.date, title: e.title, description: e.description ?? '', status: e.status, user: e.user ?? undefined }))} />
             </CardContent>
           </Card>
         </div>
@@ -185,13 +205,13 @@ export default function SolicitacaoDetalhesPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {request.anexos.length === 0 ? (
+              {attachments.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   Nenhum anexo
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {request.anexos.map((anexo) => (
+                  {attachments.map((anexo) => (
                     <div
                       key={anexo.id}
                       className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
