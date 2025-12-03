@@ -3,14 +3,27 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { User, Mail, Phone, Building2, Shield, UserPlus } from 'lucide-react';
+import { User, Mail, Phone, Building2, Shield } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 
 export default function PerfilPage() {
   const [profile, setProfile] = useState({ name: '', email: '', phone: '', orgao: '' });
   const [role, setRole] = useState('');
+  const [pwdCurrent, setPwdCurrent] = useState('');
+  const [pwdNew, setPwdNew] = useState('');
+  const [pwdConfirm, setPwdConfirm] = useState('');
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [mfaOpen, setMfaOpen] = useState(false);
+  const [mfaStatus, setMfaStatus] = useState<'inactive' | 'active' | 'enrolling'>('inactive');
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const issuer = useMemo(() => 'CAODS', []);
 
   useEffect(() => {
     const load = async () => {
@@ -51,6 +64,26 @@ export default function PerfilPage() {
     load();
   }, []);
 
+  type MfaFactor = { id: string; factor_type: 'totp' | 'webauthn' | 'sms' | string; status: 'verified' | 'unverified' | 'active' | 'inactive' | string };
+  const loadMfa = async () => {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) return;
+    const all = (data?.all ?? []) as MfaFactor[];
+    const totp = (data?.totp as MfaFactor[] | undefined) ?? all.filter((f) => f.factor_type === 'totp');
+    const active = totp.find((f) => f.status === 'verified' || f.status === 'active');
+    if (active) {
+      setMfaStatus('active');
+      setMfaFactorId(active.id);
+      setMfaSecret(null);
+      setMfaCode('');
+    } else {
+      setMfaStatus('inactive');
+      setMfaFactorId(null);
+      setMfaSecret(null);
+      setMfaCode('');
+    }
+  };
+
   const save = async () => {
     try {
       await supabase.auth.updateUser({ data: { name: profile.name, phone: profile.phone, orgao: profile.orgao, role } });
@@ -69,6 +102,58 @@ export default function PerfilPage() {
       toast({ title: 'Perfil atualizado', description: 'Dados salvos apenas na conta de autenticação.' });
       void 0;
     }
+  };
+
+  const changePassword = async () => {
+    if (!profile.email || !pwdCurrent || !pwdNew || !pwdConfirm) { toast({ title: 'Preencha os campos', variant: 'destructive' }); return; }
+    if (pwdNew !== pwdConfirm) { toast({ title: 'Senhas não conferem', variant: 'destructive' }); return; }
+    setPwdLoading(true);
+    const { error: signError } = await supabase.auth.signInWithPassword({ email: profile.email, password: pwdCurrent });
+    if (signError) { setPwdLoading(false); toast({ title: 'Senha atual incorreta', variant: 'destructive' }); return; }
+    const { error } = await supabase.auth.updateUser({ password: pwdNew });
+    setPwdLoading(false);
+    if (error) { toast({ title: 'Erro ao alterar senha', variant: 'destructive' }); return; }
+    setPwdCurrent('');
+    setPwdNew('');
+    setPwdConfirm('');
+    toast({ title: 'Senha alterada com sucesso' });
+  };
+
+  const startEnrollMfa = async () => {
+    setMfaLoading(true);
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
+    setMfaLoading(false);
+    if (error) { toast({ title: 'Erro ao iniciar 2FA', variant: 'destructive' }); return; }
+    const enrollData = data as { id: string; type: 'totp'; secret: string } | null;
+    if (!enrollData) { toast({ title: 'Erro ao iniciar 2FA', variant: 'destructive' }); return; }
+    setMfaSecret(enrollData.secret);
+    setMfaFactorId(enrollData.id);
+    setMfaStatus('enrolling');
+  };
+
+  const verifyEnrollMfa = async () => {
+    if (!mfaFactorId || !mfaCode || mfaCode.length < 6) { toast({ title: 'Informe o código 2FA', variant: 'destructive' }); return; }
+    setMfaLoading(true);
+    const { error } = await supabase.auth.mfa.verify({ factorId: mfaFactorId, code: mfaCode });
+    setMfaLoading(false);
+    if (error) { toast({ title: 'Código inválido', variant: 'destructive' }); return; }
+    setMfaStatus('active');
+    setMfaSecret(null);
+    setMfaCode('');
+    toast({ title: '2FA ativada' });
+  };
+
+  const disableMfa = async () => {
+    if (!mfaFactorId) return;
+    setMfaLoading(true);
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactorId });
+    setMfaLoading(false);
+    if (error) { toast({ title: 'Erro ao desativar 2FA', variant: 'destructive' }); return; }
+    setMfaStatus('inactive');
+    setMfaFactorId(null);
+    setMfaSecret(null);
+    setMfaCode('');
+    toast({ title: '2FA desativada' });
   };
 
   return (
@@ -167,7 +252,37 @@ export default function PerfilPage() {
                 Última alteração há 30 dias
               </p>
             </div>
-            <Button variant="outline">Alterar</Button>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline">Alterar</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Alterar Senha</DialogTitle>
+                  <DialogDescription>Informe sua senha atual e a nova senha.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label>Senha atual</Label>
+                    <Input type="password" value={pwdCurrent} onChange={(e) => setPwdCurrent(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nova senha</Label>
+                    <Input type="password" value={pwdNew} onChange={(e) => setPwdNew(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Confirmar nova senha</Label>
+                    <Input type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)} />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline">Cancelar</Button>
+                  <Button className="gradient-primary border-0" onClick={changePassword} disabled={pwdLoading}>
+                    {pwdLoading ? 'Salvando...' : 'Salvar' }
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
 
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
@@ -177,7 +292,64 @@ export default function PerfilPage() {
                 Adicione uma camada extra de segurança
               </p>
             </div>
-            <Button variant="outline">Configurar</Button>
+            <Dialog onOpenChange={(o) => { setMfaOpen(o); if (o) loadMfa(); }} open={mfaOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">Configurar</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Autenticação em Duas Etapas</DialogTitle>
+                  <DialogDescription>Configure códigos TOTP no seu autenticador.</DialogDescription>
+                </DialogHeader>
+                {mfaStatus === 'active' && (
+                  <div className="space-y-3">
+                    <p className="text-sm">2FA está ativada nesta conta.</p>
+                    <div className="flex justify-end">
+                      <Button variant="destructive" onClick={disableMfa} disabled={mfaLoading}>
+                        {mfaLoading ? 'Desativando...' : 'Desativar 2FA'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {mfaStatus === 'inactive' && (
+                  <div className="space-y-3">
+                    <p className="text-sm">2FA está desativada.</p>
+                    <div className="flex justify-end">
+                      <Button onClick={startEnrollMfa} disabled={mfaLoading}>
+                        {mfaLoading ? 'Iniciando...' : 'Ativar 2FA'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {mfaStatus === 'enrolling' && (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm">Adicione manualmente no autenticador usando o segredo:</p>
+                      <p className="font-mono text-sm mt-1">{mfaSecret}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Digite o código de 6 dígitos</Label>
+                      <InputOTP maxLength={6} value={mfaCode} onChange={(value) => setMfaCode(value)}>
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                          <InputOTPSlot index={3} />
+                          <InputOTPSlot index={4} />
+                          <InputOTPSlot index={5} />
+                        </InputOTPGroup>
+                      </InputOTP>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => { setMfaStatus('inactive'); setMfaSecret(null); setMfaCode(''); }}>Cancelar</Button>
+                      <Button className="gradient-primary border-0" onClick={verifyEnrollMfa} disabled={mfaLoading}>
+                        {mfaLoading ? 'Verificando...' : 'Confirmar'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
           </div>
         </CardContent>
       </Card>

@@ -89,7 +89,7 @@ export function AppSidebar() {
               Menu
             </p>
           )}
-          <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} />
+          <NavItem to="/inicio" icon={LayoutDashboard} label="Início" collapsed={collapsed} />
           <NavItem to="/nova-solicitacao" icon={FilePlus} label="Nova Solicitação" collapsed={collapsed} />
           <NavItem to="/minhas-solicitacoes" icon={FileText} label="Minhas Solicitações" collapsed={collapsed} />
         </div>

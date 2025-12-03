@@ -19,7 +19,7 @@ export default function LoginPage() {
   useEffect(() => {
     const check = async () => {
       const { data } = await supabase.auth.getSession();
-      if (data.session) navigate('/dashboard');
+      if (data.session) navigate('/inicio');
     };
     check();
   }, [navigate]);
@@ -42,7 +42,7 @@ export default function LoginPage() {
       }
       return;
     }
-    navigate('/dashboard');
+    navigate('/inicio');
   };
 
   const resendConfirmation = async () => {

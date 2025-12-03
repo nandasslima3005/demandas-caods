@@ -7,9 +7,7 @@ import {
   FileText,
   Clock,
   FileSearch,
-  Loader2,
   CheckCircle2,
-  AlertTriangle,
   ArrowRight,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +17,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useEffect, useState } from 'react';
 
-export default function Dashboard() {
+export default function Inicio() {
   const [stats, setStats] = useState({ total: 0, pendentes: 0, emAnalise: 0, emAndamento: 0, concluidos: 0, urgentes: 0 });
   const [recentRequests, setRecentRequests] = useState<Tables<'requests'>[]>([]);
 
@@ -44,11 +42,10 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Page Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold font-display text-foreground">
-            Dashboard
+            Início
           </h1>
           <p className="text-muted-foreground">
             Visão geral das solicitações do Centro de Apoio
@@ -61,7 +58,6 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <StatCard
           title="Total"
@@ -89,7 +85,6 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Recent Requests */}
       <Card className="shadow-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="font-display">Solicitações Recentes</CardTitle>
@@ -138,7 +133,6 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Quick Info Cards */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="shadow-card">
           <CardHeader>
