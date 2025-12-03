@@ -4,6 +4,22 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap');
 
+@font-face {
+  font-family: 'AnandaBlack';
+  src: url('/AnandaBlackPersonalUseRegular-rg9Rx.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'LostAges';
+  src: url('/LostAgesPersonalUseRegular-Ea0nl.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   :root {
     --background: 210 20% 98%;
@@ -135,6 +151,13 @@
 }
 
 @layer utilities {
+  .font-ananda {
+    font-family: 'AnandaBlack', 'Plus Jakarta Sans', sans-serif;
+  }
+
+  .font-lostages {
+    font-family: 'LostAges', 'Plus Jakarta Sans', sans-serif;
+  }
   .gradient-primary {
     background: var(--gradient-primary);
   }

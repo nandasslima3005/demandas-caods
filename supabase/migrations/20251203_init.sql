@@ -62,15 +62,45 @@ alter table public.requests enable row level security;
 alter table public.attachments enable row level security;
 alter table public.timeline_events enable row level security;
 
--- Policies (permissive for anon key; adjust in production)
+-- Policies (restrict inserts to gestores; allow read/update initially)
 create policy "profiles_read_all" on public.profiles for select using (true);
-create policy "profiles_write_all" on public.profiles for insert with check (true);
 create policy "profiles_update_all" on public.profiles for update using (true);
+create policy "profiles_insert_by_manager" on public.profiles for insert
+  with check (
+    (
+      (current_setting('request.jwt.claims', true)::jsonb ? 'email')
+      and exists (
+        select 1 from public.profiles p
+        where p.email = (current_setting('request.jwt.claims', true)::jsonb ->> 'email')
+          and p.role = 'gestor'
+      )
+    )
+  );
 
 create policy "requests_read_all" on public.requests for select using (true);
 create policy "requests_write_all" on public.requests for insert with check (true);
-create policy "requests_update_all" on public.requests for update using (true);
-create policy "requests_delete_all" on public.requests for delete using (true);
+create policy "requests_update_by_manager" on public.requests for update
+  using (
+    (
+      (current_setting('request.jwt.claims', true)::jsonb ? 'email')
+      and exists (
+        select 1 from public.profiles p
+        where p.email = (current_setting('request.jwt.claims', true)::jsonb ->> 'email')
+          and p.role = 'gestor'
+      )
+    )
+  );
+create policy "requests_delete_by_manager" on public.requests for delete
+  using (
+    (
+      (current_setting('request.jwt.claims', true)::jsonb ? 'email')
+      and exists (
+        select 1 from public.profiles p
+        where p.email = (current_setting('request.jwt.claims', true)::jsonb ->> 'email')
+          and p.role = 'gestor'
+      )
+    )
+  );
 
 create policy "attachments_read_all" on public.attachments for select using (true);
 create policy "attachments_write_all" on public.attachments for insert with check (true);
@@ -80,3 +110,7 @@ create policy "timeline_read_all" on public.timeline_events for select using (tr
 create policy "timeline_write_all" on public.timeline_events for insert with check (true);
 create policy "timeline_delete_all" on public.timeline_events for delete using (true);
 
+-- Seed gestor profile linked to auth user id
+insert into public.profiles (id, name, email, phone, orgao, role)
+values ('fd7c55f7-0608-4e32-afff-f331652f5f2d', 'Fernanda Santos Sousa Lima', 'fernandasantos@mppi.mp.br', '(89) 98105-9262', 'CAODS', 'gestor')
+on conflict (id) do nothing;

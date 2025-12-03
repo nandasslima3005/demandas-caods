@@ -3,34 +3,71 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { User, Mail, Phone, Building2, Shield } from 'lucide-react';
+import { User, Mail, Phone, Building2, Shield, UserPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useState } from 'react';
+import { toast } from '@/hooks/use-toast';
 
 export default function PerfilPage() {
-  const [profile, setProfile] = useState({ name: 'Maria Silva', email: 'maria.silva@email.com', phone: '(86) 99999-9999', orgao: 'Promotoria de Justiça de Teresina' });
+  const [profile, setProfile] = useState({ name: '', email: '', phone: '', orgao: '' });
+  const [role, setRole] = useState('');
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.from('profiles').select('*').limit(1).single();
-      if (data) {
-        setProfile({
-          name: data.name,
-          email: data.email,
-          phone: data.phone ?? '',
-          orgao: data.orgao ?? '',
-        });
+      const { data: auth } = await supabase.auth.getUser();
+      const meta = auth.user?.user_metadata ?? {};
+      const base = {
+        name: (meta.name as string) ?? '',
+        email: auth.user?.email ?? '',
+        phone: (meta.phone as string) ?? '',
+        orgao: (meta.orgao as string) ?? '',
+      };
+      setRole((meta.role as string) ?? '');
+
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', base.email)
+          .limit(1)
+          .single();
+        if (data) {
+          setProfile({
+            name: data.name ?? base.name,
+            email: data.email ?? base.email,
+            phone: data.phone ?? base.phone,
+            orgao: data.orgao ?? base.orgao,
+          });
+          const computedRole = (data.role as string) ?? ((meta.role as string) ?? '');
+          setRole(computedRole);
+        } else {
+          setProfile(base);
+        }
+      } catch {
+        setProfile(base);
+        void 0;
       }
     };
     load();
   }, []);
 
   const save = async () => {
-    const { data } = await supabase.from('profiles').select('id').limit(1).single();
-    if (data?.id) {
-      await supabase.from('profiles').update({ name: profile.name, email: profile.email, phone: profile.phone, orgao: profile.orgao, updated_at: new Date().toISOString() }).eq('id', data.id);
-    } else {
-      await supabase.from('profiles').insert({ name: profile.name, email: profile.email, phone: profile.phone, orgao: profile.orgao });
+    try {
+      await supabase.auth.updateUser({ data: { name: profile.name, phone: profile.phone, orgao: profile.orgao, role } });
+    } catch {
+      void 0;
+    }
+    try {
+      const { data } = await supabase.from('profiles').select('id').eq('email', profile.email).limit(1).single();
+      if (data?.id) {
+        await supabase.from('profiles').update({ name: profile.name, email: profile.email, phone: profile.phone, orgao: profile.orgao, updated_at: new Date().toISOString() }).eq('id', data.id);
+      } else {
+        await supabase.from('profiles').insert({ name: profile.name, email: profile.email, phone: profile.phone, orgao: profile.orgao, role });
+      }
+      toast({ title: 'Perfil atualizado' });
+    } catch {
+      toast({ title: 'Perfil atualizado', description: 'Dados salvos apenas na conta de autenticação.' });
+      void 0;
     }
   };
 
@@ -52,12 +89,12 @@ export default function PerfilPage() {
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="h-24 w-24 rounded-full gradient-primary flex items-center justify-center">
               <span className="text-3xl font-bold text-primary-foreground font-display">
-                MS
+                {(profile.name || '').split(' ').filter(Boolean).map(p => p[0]).slice(0,2).join('').toUpperCase() || 'U'}
               </span>
             </div>
             <div className="text-center sm:text-left">
-              <h2 className="text-xl font-bold font-display">{profile.name}</h2>
-              <p className="text-muted-foreground">Usuário Externo</p>
+              <h2 className="text-xl font-bold font-display">{profile.name || profile.email}</h2>
+              <p className="text-muted-foreground">{role === 'gestor' ? 'Gestor' : 'Usuário'}</p>
               <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start">
                 <Shield className="h-4 w-4 text-primary" />
                 <span className="text-sm text-primary font-medium">Conta verificada</span>
@@ -144,6 +181,8 @@ export default function PerfilPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Gestão de usuários movida para página dedicada */}
     </div>
   );
 }

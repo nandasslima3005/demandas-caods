@@ -1,10 +1,27 @@
 import { Outlet } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { Bell, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { supabase } from '@/integrations/supabase/client';
 
 export function AppLayout() {
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('');
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase.auth.getUser();
+      const meta = data.user?.user_metadata ?? {};
+      setName((meta.name as string) ?? data.user?.email ?? '');
+      setRole((meta.role as string) ?? '');
+    };
+    load();
+  }, []);
+
+  const initials = (name || '').split(' ').filter(Boolean).map(p => p[0]).slice(0,2).join('').toUpperCase();
+
   return (
     <div className="min-h-screen bg-background">
       <AppSidebar />
@@ -31,11 +48,11 @@ export function AppLayout() {
               </Button>
               <div className="flex items-center gap-3 pl-3 border-l border-border">
                 <div className="text-right">
-                  <p className="text-sm font-medium">Maria Silva</p>
-                  <p className="text-xs text-muted-foreground">Usuário</p>
+                  <p className="text-sm font-medium">{name || 'Usuário'}</p>
+                  <p className="text-xs text-muted-foreground">{role === 'gestor' ? 'Gestor' : 'Usuário'}</p>
                 </div>
                 <div className="h-9 w-9 rounded-full gradient-primary flex items-center justify-center">
-                  <span className="text-sm font-medium text-primary-foreground">MS</span>
+                  <span className="text-sm font-medium text-primary-foreground">{initials || 'U'}</span>
                 </div>
               </div>
             </div>

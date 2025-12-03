@@ -62,8 +62,15 @@ export default function GerenciarSolicitacoesPage() {
     status: 'pendente' as Status,
   });
   const [requests, setRequests] = useState<Request[]>([]);
+  const [role, setRole] = useState<string>('');
 
   useEffect(() => {
+    const loadRole = async () => {
+      const { data } = await supabase.auth.getUser();
+      const meta = data.user?.user_metadata ?? {};
+      setRole((meta.role as string) ?? '');
+    };
+    loadRole();
     const load = async () => {
       const { data, error } = await supabase
         .from('requests')
@@ -132,11 +139,13 @@ export default function GerenciarSolicitacoesPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (role !== 'gestor') { toast({ title: 'Acesso negado', description: 'Somente gestores podem excluir.', variant: 'destructive' }); return; }
     await supabase.from('requests').delete().eq('id', id);
     setRequests(prev => prev.filter(r => r.id !== id));
   };
 
   const startEdit = (req: Request) => {
+    if (role !== 'gestor') { toast({ title: 'Acesso negado', description: 'Somente gestores podem editar.', variant: 'destructive' }); return; }
     setEditId(req.id);
     setEditForm({
       orgaoSolicitante: req.orgaoSolicitante,
@@ -153,6 +162,7 @@ export default function GerenciarSolicitacoesPage() {
 
   const saveEdit = async () => {
     if (!editId) return;
+    if (role !== 'gestor') { toast({ title: 'Acesso negado', description: 'Somente gestores podem editar.', variant: 'destructive' }); return; }
     const payload = {
       orgaoSolicitante: editForm.orgaoSolicitante,
       tipoSolicitacao: editForm.tipoSolicitacao as RequestType,
@@ -315,14 +325,18 @@ export default function GerenciarSolicitacoesPage() {
                             Visualizar
                           </Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => startEdit(request)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDelete(request.id)} className="text-destructive focus:text-destructive">
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Excluir
-                        </DropdownMenuItem>
+                        {role === 'gestor' && (
+                          <>
+                            <DropdownMenuItem onClick={() => startEdit(request)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDelete(request.id)} className="text-destructive focus:text-destructive">
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
