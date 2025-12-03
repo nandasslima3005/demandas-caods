@@ -62,7 +62,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <StatCard
           title="Total"
           value={stats.total}
@@ -82,22 +82,10 @@ export default function Dashboard() {
           variant="info"
         />
         <StatCard
-          title="Em Andamento"
-          value={stats.emAndamento}
-          icon={Loader2}
-          variant="primary"
-        />
-        <StatCard
           title="Concluídos"
           value={stats.concluidos}
           icon={CheckCircle2}
           variant="success"
-        />
-        <StatCard
-          title="Urgentes"
-          value={stats.urgentes}
-          icon={AlertTriangle}
-          variant="destructive"
         />
       </div>
 
@@ -193,10 +181,6 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <span className="text-sm">Prioridade Alta</span>
                 <span className="text-sm font-medium">2-3 dias úteis</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Prioridade Urgente</span>
-                <span className="text-sm font-medium text-destructive">24-48 horas</span>
               </div>
             </div>
           </CardContent>
