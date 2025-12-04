@@ -78,7 +78,7 @@ export function AppLayout() {
                   <p className="text-xs text-muted-foreground">{role === 'gestor' ? 'Gestor' : 'Usuário'}</p>
                 </div>
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt="Avatar" className="h-9 w-9 rounded-full object-cover" />
+                  <img src={avatarUrl} alt="Avatar" className="h-9 w-9 rounded-full object-cover border border-border" onError={() => setAvatarUrl(null)} />
                 ) : (
                   <div className="h-9 w-9 rounded-full gradient-primary flex items-center justify-center">
                     <span className="text-sm font-medium text-primary-foreground">{initials || 'U'}</span>
