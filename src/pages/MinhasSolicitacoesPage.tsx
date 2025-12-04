@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import type { Tables } from '@/integrations/supabase/types';
+import type { DbRequest } from '@/types/database';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { PriorityBadge } from '@/components/ui/priority-badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -28,84 +28,52 @@ export default function MinhasSolicitacoesPage() {
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
-
-  const [requests, setRequests] = useState<Tables<'requests'>[]>([]);
+  const [requests, setRequests] = useState<DbRequest[]>([]);
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase
-        .from('requests')
-        .select('*')
-        .order('createdAt', { ascending: false });
-      const remote = (data ?? []) as Tables<'requests'>[];
-      let local: Tables<'requests'>[] = [];
-      try {
-        const raw = localStorage.getItem('requests:local');
-        const arr = raw ? JSON.parse(raw) : [];
-        local = Array.isArray(arr) ? arr : [];
-      } catch { local = []; }
-      const combined = [...local, ...remote] as Tables<'requests'>[];
-      const pendentes = combined
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      
+      let query = supabase.from('requests').select('*').order('created_at', { ascending: false });
+      
+      // Filter by user_id if not a gestor
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId ?? '')
+        .maybeSingle();
+      
+      if (roleData?.role !== 'gestor' && userId) {
+        query = query.eq('user_id', userId);
+      }
+      
+      const { data } = await query;
+      const rows = (data ?? []) as DbRequest[];
+      
+      // Calculate queue positions
+      const pendentes = rows
         .filter((r) => r.status === 'pendente')
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
       const indexMap = new Map<string, number>();
       pendentes.forEach((r, i) => indexMap.set(String(r.id), i + 1));
-      const withQueue = combined.map((r) => {
-        const current = r.posicaoFila as number | null | undefined;
+      
+      const withQueue = rows.map((r) => {
+        const current = r.posicao_fila;
         const computed = indexMap.get(String(r.id)) ?? 0;
-        return { ...r, posicaoFila: typeof current === 'number' && current > 0 ? current : computed } as Tables<'requests'>;
+        return { ...r, posicao_fila: typeof current === 'number' && current > 0 ? current : computed };
       });
       setRequests(withQueue);
-
-      // Sync local attachments for remote requests
-      const dataUrlToBlob = (dataUrl: string) => {
-        const parts = dataUrl.split(',');
-        const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
-        const bstr = atob(parts[1] || '');
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) u8arr[n] = bstr.charCodeAt(n);
-        return new Blob([u8arr], { type: mime });
-      };
-      for (const r of remote) {
-        const key = `attachments:local:${r.id}`;
-        let locals: any[] = [];
-        try {
-          const raw = localStorage.getItem(key);
-          const arr = raw ? JSON.parse(raw) : [];
-          locals = Array.isArray(arr) ? arr : [];
-        } catch { locals = []; }
-        if (locals.length === 0) continue;
-        const remaining: any[] = [];
-        for (const a of locals) {
-          try {
-            const blob = dataUrlToBlob(a.url);
-            const clean = String(a.name || 'anexo').replace(/[^a-zA-Z0-9._-]/g, '_');
-            const path = `${r.id}/${Date.now()}_${clean}`;
-            const up = await supabase.storage.from('attachments').upload(path, blob, { upsert: true });
-            if (up.error) { remaining.push(a); continue; }
-            const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
-            const publicUrl = urlData?.publicUrl ?? '';
-            const ins = await supabase.from('attachments').insert({ requestId: r.id, name: a.name, type: a.type || 'application/octet-stream', size: a.size || 0, url: publicUrl, uploadedAt: new Date().toISOString() });
-            if (ins.error) { remaining.push(a); }
-          } catch { remaining.push(a); }
-        }
-        try {
-          if (remaining.length > 0) localStorage.setItem(key, JSON.stringify(remaining));
-          else localStorage.removeItem(key);
-        } catch { void 0; }
-      }
     };
     load();
   }, []);
 
-  const daysInQueue = (req: Tables<'requests'>) => {
+  const daysInQueue = (req: DbRequest) => {
     if (req.status !== 'pendente' && req.status !== 'em_analise') return null;
-    const start = req.createdAt ? new Date(req.createdAt) : new Date(req.dataSolicitacao);
+    const start = req.created_at ? new Date(req.created_at) : new Date(req.data_solicitacao);
     const now = new Date();
     const ms = now.getTime() - start.getTime();
-    const days = Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
-    return days;
+    return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
   };
 
   const badgeClass = (days: number) => {
@@ -117,8 +85,8 @@ export default function MinhasSolicitacoesPage() {
   const filteredRequests = requests.filter((request) => {
     const matchesSearch =
       request.assunto.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.orgaoSolicitante.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.numeroSEI.includes(searchTerm);
+      request.orgao_solicitante.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (request.numero_sei?.includes(searchTerm) ?? false);
 
     const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
     const matchesPriority = priorityFilter === 'all' || request.prioridade === priorityFilter;
@@ -128,7 +96,6 @@ export default function MinhasSolicitacoesPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold font-display text-foreground">
@@ -146,7 +113,6 @@ export default function MinhasSolicitacoesPage() {
         </Button>
       </div>
 
-      {/* Search and Filters */}
       <Card className="shadow-card">
         <CardContent className="p-4">
           <div className="flex flex-col gap-4">
@@ -226,12 +192,10 @@ export default function MinhasSolicitacoesPage() {
         </CardContent>
       </Card>
 
-      {/* Results count */}
       <p className="text-sm text-muted-foreground">
         {filteredRequests.length} solicitação(ões) encontrada(s)
       </p>
 
-      {/* Request List */}
       <div className="space-y-4">
         {filteredRequests.length === 0 ? (
           <Card className="shadow-card">
@@ -252,18 +216,17 @@ export default function MinhasSolicitacoesPage() {
               <Card className="shadow-card hover:shadow-card-hover transition-all hover:border-primary/20">
                 <CardContent className="p-5">
                   <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-                    {/* Main Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <h3 className="font-semibold text-foreground">
                           {request.assunto}
                         </h3>
-                        <StatusBadge status={request.status} />
-                        <PriorityBadge priority={request.prioridade} />
+                        <StatusBadge status={request.status as Status} />
+                        <PriorityBadge priority={request.prioridade as Priority} />
                       </div>
 
                       <p className="text-sm text-muted-foreground mb-3">
-                        {request.orgaoSolicitante}
+                        {request.orgao_solicitante}
                       </p>
 
                       <p className="text-sm text-foreground/80 line-clamp-2 mb-3">
@@ -272,27 +235,26 @@ export default function MinhasSolicitacoesPage() {
 
                       <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                         <span>
-                          <span className="font-medium">SEI:</span> {request.numeroSEI}
+                          <span className="font-medium">SEI:</span> {request.numero_sei}
                         </span>
-                        {request.numeroSIMP && (
+                        {request.numero_simp && (
                           <span>
-                            <span className="font-medium">SIMP:</span> {request.numeroSIMP}
+                            <span className="font-medium">SIMP:</span> {request.numero_simp}
                           </span>
                         )}
                         <span>
                           <span className="font-medium">Data:</span>{' '}
-                          {format(new Date(request.dataSolicitacao), 'dd/MM/yyyy', { locale: ptBR })}
+                          {format(new Date(request.data_solicitacao), 'dd/MM/yyyy', { locale: ptBR })}
                         </span>
                       </div>
                     </div>
 
-                    {/* Position and Arrow */}
                     <div className="flex items-center gap-4 lg:flex-col lg:items-end">
-                      {request.posicaoFila !== undefined && request.posicaoFila > 0 && (
+                      {request.posicao_fila !== null && request.posicao_fila > 0 && (
                         <div className="text-center lg:text-right">
                           <p className="text-xs text-muted-foreground">Posição na fila</p>
                           <p className="text-2xl font-bold text-primary font-display">
-                            #{request.posicaoFila}
+                            #{request.posicao_fila}
                           </p>
                         </div>
                       )}

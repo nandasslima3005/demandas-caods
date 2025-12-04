@@ -5,10 +5,11 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { User, Mail, Phone, Building2, Shield, Camera } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import type { DbProfile } from '@/types/database';
 
 export default function PerfilPage() {
   const [profile, setProfile] = useState({ name: '', email: '', phone: '', orgao: '' });
@@ -25,12 +26,13 @@ export default function PerfilPage() {
   const [mfaSecret, setMfaSecret] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
   const [mfaLoading, setMfaLoading] = useState(false);
-  const issuer = useMemo(() => 'CAODS', []);
 
   useEffect(() => {
     const load = async () => {
       const { data: auth } = await supabase.auth.getUser();
+      const userId = auth.user?.id;
       const meta = auth.user?.user_metadata ?? {};
+      
       const base = {
         name: (meta.name as string) ?? '',
         email: auth.user?.email ?? '',
@@ -38,67 +40,59 @@ export default function PerfilPage() {
         orgao: (meta.orgao as string) ?? '',
       };
       setAvatarUrl((meta.avatar_url as string) ?? null);
-      setRole((meta.role as string) ?? '');
 
-      try {
-        const { data } = await supabase
+      if (userId) {
+        // Get role
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .maybeSingle();
+        setRole(roleData?.role ?? '');
+
+        // Get profile
+        const { data: profileData } = await supabase
           .from('profiles')
           .select('*')
-          .eq('email', base.email)
-          .limit(1)
-          .single();
-        if (data) {
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        if (profileData) {
+          const p = profileData as DbProfile;
           setProfile({
-            name: data.name ?? base.name,
-            email: data.email ?? base.email,
-            phone: data.phone ?? base.phone,
-            orgao: data.orgao ?? base.orgao,
+            name: p.name ?? base.name,
+            email: p.email ?? base.email,
+            phone: p.phone ?? base.phone,
+            orgao: p.orgao ?? base.orgao,
           });
-          const computedRole = (data.role as string) ?? ((meta.role as string) ?? '');
-          setRole(computedRole);
-          const avatarFromDb = (data as any).avatar_url as string | undefined;
-          if (avatarFromDb) setAvatarUrl(avatarFromDb);
+          if (p.avatar_url) setAvatarUrl(p.avatar_url);
         } else {
           setProfile(base);
         }
-      } catch {
+      } else {
         setProfile(base);
-        void 0;
       }
     };
     load();
   }, []);
 
-  type MfaFactor = { id: string; factor_type: 'totp' | 'webauthn' | 'sms' | string; status: 'verified' | 'unverified' | 'active' | 'inactive' | string };
+  type MfaFactor = { id: string; factor_type: string; status: string };
   const loadMfa = async () => {
     const { data, error } = await supabase.auth.mfa.listFactors();
     if (error) return;
     const all = (data?.all ?? []) as MfaFactor[];
-    const totp = (data?.totp as MfaFactor[] | undefined) ?? all.filter((f) => f.factor_type === 'totp');
+    const totp = all.filter((f) => f.factor_type === 'totp');
     const active = totp.find((f) => f.status === 'verified' || f.status === 'active');
     if (active) {
       setMfaStatus('active');
       setMfaFactorId(active.id);
-      setMfaSecret(null);
-      setMfaCode('');
     } else {
       setMfaStatus('inactive');
       setMfaFactorId(null);
-      setMfaSecret(null);
-      setMfaCode('');
     }
+    setMfaSecret(null);
+    setMfaCode('');
   };
-
-  useEffect(() => {
-    if (!profile.email) return;
-    try {
-      const key = `avatar:${profile.email}`;
-      const stored = localStorage.getItem(key);
-      if (stored) setAvatarUrl(stored);
-    } catch {
-      void 0;
-    }
-  }, [profile.email]);
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -106,7 +100,11 @@ export default function PerfilPage() {
     setAvatarUploading(true);
     const { data: auth } = await supabase.auth.getUser();
     const user = auth.user;
-    if (!user) { setAvatarUploading(false); toast({ title: 'Sessão expirada', variant: 'destructive' }); return; }
+    if (!user) {
+      setAvatarUploading(false);
+      toast({ title: 'Sessão expirada', variant: 'destructive' });
+      return;
+    }
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${user.id}/${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
@@ -115,84 +113,55 @@ export default function PerfilPage() {
       const publicUrl = publicUrlData?.publicUrl ?? null;
       if (publicUrl) {
         await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+        await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('user_id', user.id);
         setAvatarUrl(publicUrl);
         try { window.dispatchEvent(new CustomEvent('avatar:update', { detail: publicUrl })); } catch { void 0; }
-        try {
-          const { data } = await supabase.from('profiles').select('id').eq('email', profile.email).limit(1).single();
-          if (data?.id) {
-            await supabase.from('profiles').update({ avatar_url: publicUrl, updated_at: new Date().toISOString() }).eq('id', data.id);
-          }
-        } catch { void 0; }
         toast({ title: 'Avatar atualizado' });
-        setAvatarUploading(false);
-        return;
       }
-    }
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const img = new Image();
-          img.onload = () => {
-            const maxSize = 256;
-            const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
-            const w = Math.max(1, Math.round(img.width * ratio));
-            const h = Math.max(1, Math.round(img.height * ratio));
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) { reject(new Error('canvas')); return; }
-            ctx.drawImage(img, 0, 0, w, h);
-            const url = canvas.toDataURL('image/jpeg', 0.8);
-            resolve(url);
-          };
-          img.onerror = () => reject(new Error('image'));
-          img.src = String(reader.result);
-        };
-        reader.onerror = () => reject(new Error('reader'));
-        reader.readAsDataURL(file);
-      });
-      const key = `avatar:${profile.email || user.email || 'local'}`;
-      try { localStorage.setItem(key, dataUrl); } catch { void 0; }
-      setAvatarUrl(dataUrl);
-      try { window.dispatchEvent(new CustomEvent('avatar:update', { detail: dataUrl })); } catch { void 0; }
-      toast({ title: 'Avatar atualizado localmente' });
-    } catch {
-      toast({ title: 'Falha ao processar imagem', variant: 'destructive' });
     }
     setAvatarUploading(false);
   };
 
   const save = async () => {
-    try {
-      await supabase.auth.updateUser({ data: { name: profile.name, phone: profile.phone, orgao: profile.orgao, role } });
-    } catch {
-      void 0;
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth.user?.id;
+    
+    await supabase.auth.updateUser({ data: { name: profile.name, phone: profile.phone, orgao: profile.orgao } });
+    
+    if (userId) {
+      await supabase.from('profiles').update({
+        name: profile.name,
+        email: profile.email,
+        phone: profile.phone,
+        orgao: profile.orgao,
+      }).eq('user_id', userId);
     }
-    try {
-      const { data } = await supabase.from('profiles').select('id').eq('email', profile.email).limit(1).single();
-      if (data?.id) {
-        await supabase.from('profiles').update({ name: profile.name, email: profile.email, phone: profile.phone, orgao: profile.orgao, updated_at: new Date().toISOString() }).eq('id', data.id);
-      } else {
-        await supabase.from('profiles').insert({ name: profile.name, email: profile.email, phone: profile.phone, orgao: profile.orgao, role });
-      }
-      toast({ title: 'Perfil atualizado' });
-    } catch {
-      toast({ title: 'Perfil atualizado', description: 'Dados salvos apenas na conta de autenticação.' });
-      void 0;
-    }
+    
+    toast({ title: 'Perfil atualizado' });
   };
 
   const changePassword = async () => {
-    if (!profile.email || !pwdCurrent || !pwdNew || !pwdConfirm) { toast({ title: 'Preencha os campos', variant: 'destructive' }); return; }
-    if (pwdNew !== pwdConfirm) { toast({ title: 'Senhas não conferem', variant: 'destructive' }); return; }
+    if (!profile.email || !pwdCurrent || !pwdNew || !pwdConfirm) {
+      toast({ title: 'Preencha os campos', variant: 'destructive' });
+      return;
+    }
+    if (pwdNew !== pwdConfirm) {
+      toast({ title: 'Senhas não conferem', variant: 'destructive' });
+      return;
+    }
     setPwdLoading(true);
     const { error: signError } = await supabase.auth.signInWithPassword({ email: profile.email, password: pwdCurrent });
-    if (signError) { setPwdLoading(false); toast({ title: 'Senha atual incorreta', variant: 'destructive' }); return; }
+    if (signError) {
+      setPwdLoading(false);
+      toast({ title: 'Senha atual incorreta', variant: 'destructive' });
+      return;
+    }
     const { error } = await supabase.auth.updateUser({ password: pwdNew });
     setPwdLoading(false);
-    if (error) { toast({ title: 'Erro ao alterar senha', variant: 'destructive' }); return; }
+    if (error) {
+      toast({ title: 'Erro ao alterar senha', variant: 'destructive' });
+      return;
+    }
     setPwdCurrent('');
     setPwdNew('');
     setPwdConfirm('');
@@ -203,20 +172,41 @@ export default function PerfilPage() {
     setMfaLoading(true);
     const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
     setMfaLoading(false);
-    if (error) { toast({ title: 'Erro ao iniciar 2FA', variant: 'destructive' }); return; }
-    const enrollData = data as { id: string; type: 'totp'; secret: string } | null;
-    if (!enrollData) { toast({ title: 'Erro ao iniciar 2FA', variant: 'destructive' }); return; }
-    setMfaSecret(enrollData.secret);
+    if (error || !data) {
+      toast({ title: 'Erro ao iniciar 2FA', variant: 'destructive' });
+      return;
+    }
+    const enrollData = data as any;
+    setMfaSecret(enrollData.totp?.secret || enrollData.secret || null);
     setMfaFactorId(enrollData.id);
     setMfaStatus('enrolling');
   };
 
   const verifyEnrollMfa = async () => {
-    if (!mfaFactorId || !mfaCode || mfaCode.length < 6) { toast({ title: 'Informe o código 2FA', variant: 'destructive' }); return; }
+    if (!mfaFactorId || !mfaCode || mfaCode.length < 6) {
+      toast({ title: 'Informe o código 2FA', variant: 'destructive' });
+      return;
+    }
     setMfaLoading(true);
-    const { error } = await supabase.auth.mfa.verify({ factorId: mfaFactorId, code: mfaCode });
+    
+    // First create a challenge
+    const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: mfaFactorId });
+    if (challengeError || !challengeData) {
+      setMfaLoading(false);
+      toast({ title: 'Erro ao criar desafio', variant: 'destructive' });
+      return;
+    }
+    
+    const { error } = await supabase.auth.mfa.verify({
+      factorId: mfaFactorId,
+      challengeId: challengeData.id,
+      code: mfaCode,
+    });
     setMfaLoading(false);
-    if (error) { toast({ title: 'Código inválido', variant: 'destructive' }); return; }
+    if (error) {
+      toast({ title: 'Código inválido', variant: 'destructive' });
+      return;
+    }
     setMfaStatus('active');
     setMfaSecret(null);
     setMfaCode('');
@@ -228,7 +218,10 @@ export default function PerfilPage() {
     setMfaLoading(true);
     const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactorId });
     setMfaLoading(false);
-    if (error) { toast({ title: 'Erro ao desativar 2FA', variant: 'destructive' }); return; }
+    if (error) {
+      toast({ title: 'Erro ao desativar 2FA', variant: 'destructive' });
+      return;
+    }
     setMfaStatus('inactive');
     setMfaFactorId(null);
     setMfaSecret(null);
@@ -238,7 +231,6 @@ export default function PerfilPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold font-display text-foreground">
           Meu Perfil
@@ -248,7 +240,6 @@ export default function PerfilPage() {
         </p>
       </div>
 
-      {/* Profile Card */}
       <Card className="shadow-card">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row items-center gap-6">
@@ -258,7 +249,7 @@ export default function PerfilPage() {
               ) : (
                 <div className="h-full w-full gradient-primary flex items-center justify-center">
                   <span className="text-3xl font-bold text-primary-foreground font-display">
-                    {(profile.name || '').split(' ').filter(Boolean).map(p => p[0]).slice(0,2).join('').toUpperCase() || 'U'}
+                    {(profile.name || '').split(' ').filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase() || 'U'}
                   </span>
                 </div>
               )}
@@ -282,7 +273,6 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      {/* Personal Info */}
       <Card className="shadow-card">
         <CardHeader>
           <CardTitle className="font-display text-lg">
@@ -302,7 +292,7 @@ export default function PerfilPage() {
               <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input id="email" type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} className="pl-9" />
+                <Input id="email" type="email" value={profile.email} disabled className="pl-9" />
               </div>
             </div>
             <div className="space-y-2">
@@ -330,7 +320,6 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      {/* Security */}
       <Card className="shadow-card">
         <CardHeader>
           <CardTitle className="font-display text-lg">
@@ -371,7 +360,7 @@ export default function PerfilPage() {
                 <DialogFooter>
                   <Button variant="outline">Cancelar</Button>
                   <Button className="gradient-primary border-0" onClick={changePassword} disabled={pwdLoading}>
-                    {pwdLoading ? 'Salvando...' : 'Salvar' }
+                    {pwdLoading ? 'Salvando...' : 'Salvar'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -397,32 +386,26 @@ export default function PerfilPage() {
                 {mfaStatus === 'active' && (
                   <div className="space-y-3">
                     <p className="text-sm">2FA está ativada nesta conta.</p>
-                    <div className="flex justify-end">
-                      <Button variant="destructive" onClick={disableMfa} disabled={mfaLoading}>
-                        {mfaLoading ? 'Desativando...' : 'Desativar 2FA'}
-                      </Button>
-                    </div>
+                    <Button variant="destructive" onClick={disableMfa} disabled={mfaLoading}>
+                      {mfaLoading ? 'Desativando...' : 'Desativar 2FA'}
+                    </Button>
                   </div>
                 )}
                 {mfaStatus === 'inactive' && (
                   <div className="space-y-3">
-                    <p className="text-sm">2FA está desativada.</p>
-                    <div className="flex justify-end">
-                      <Button onClick={startEnrollMfa} disabled={mfaLoading}>
-                        {mfaLoading ? 'Iniciando...' : 'Ativar 2FA'}
-                      </Button>
-                    </div>
+                    <p className="text-sm">2FA não está ativada.</p>
+                    <Button onClick={startEnrollMfa} disabled={mfaLoading}>
+                      {mfaLoading ? 'Iniciando...' : 'Ativar 2FA'}
+                    </Button>
                   </div>
                 )}
-                {mfaStatus === 'enrolling' && (
-                  <div className="space-y-4">
-                    <div>
-                      <p className="text-sm">Adicione manualmente no autenticador usando o segredo:</p>
-                      <p className="font-mono text-sm mt-1">{mfaSecret}</p>
-                    </div>
+                {mfaStatus === 'enrolling' && mfaSecret && (
+                  <div className="space-y-3">
+                    <p className="text-sm">Adicione este segredo ao seu autenticador:</p>
+                    <code className="block p-2 bg-muted rounded text-xs break-all">{mfaSecret}</code>
                     <div className="space-y-2">
-                      <Label>Digite o código de 6 dígitos</Label>
-                      <InputOTP maxLength={6} value={mfaCode} onChange={(value) => setMfaCode(value)}>
+                      <Label>Código de verificação</Label>
+                      <InputOTP maxLength={6} value={mfaCode} onChange={setMfaCode}>
                         <InputOTPGroup>
                           <InputOTPSlot index={0} />
                           <InputOTPSlot index={1} />
@@ -433,12 +416,9 @@ export default function PerfilPage() {
                         </InputOTPGroup>
                       </InputOTP>
                     </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => { setMfaStatus('inactive'); setMfaSecret(null); setMfaCode(''); }}>Cancelar</Button>
-                      <Button className="gradient-primary border-0" onClick={verifyEnrollMfa} disabled={mfaLoading}>
-                        {mfaLoading ? 'Verificando...' : 'Confirmar'}
-                      </Button>
-                    </div>
+                    <Button onClick={verifyEnrollMfa} disabled={mfaLoading}>
+                      {mfaLoading ? 'Verificando...' : 'Verificar e Ativar'}
+                    </Button>
                   </div>
                 )}
               </DialogContent>
@@ -446,8 +426,6 @@ export default function PerfilPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Gestão de usuários movida para página dedicada */}
     </div>
   );
 }

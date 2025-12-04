@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      attachments: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          request_id: string
+          size: number
+          type: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          request_id: string
+          size: number
+          type: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          request_id?: string
+          size?: number
+          type?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attachments_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -49,6 +87,98 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      requests: {
+        Row: {
+          assunto: string
+          created_at: string
+          data_solicitacao: string
+          descricao: string
+          encaminhamento: string | null
+          id: string
+          numero_sei: string | null
+          numero_simp: string | null
+          orgao_solicitante: string
+          posicao_fila: number | null
+          prioridade: string
+          status: string
+          tipo_solicitacao: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          assunto: string
+          created_at?: string
+          data_solicitacao?: string
+          descricao: string
+          encaminhamento?: string | null
+          id?: string
+          numero_sei?: string | null
+          numero_simp?: string | null
+          orgao_solicitante: string
+          posicao_fila?: number | null
+          prioridade?: string
+          status?: string
+          tipo_solicitacao: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          assunto?: string
+          created_at?: string
+          data_solicitacao?: string
+          descricao?: string
+          encaminhamento?: string | null
+          id?: string
+          numero_sei?: string | null
+          numero_simp?: string | null
+          orgao_solicitante?: string
+          posicao_fila?: number | null
+          prioridade?: string
+          status?: string
+          tipo_solicitacao?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      timeline_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          request_id: string
+          status: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          request_id: string
+          status: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          request_id?: string
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timeline_events_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {

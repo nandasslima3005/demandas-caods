@@ -2,7 +2,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { PriorityBadge } from '@/components/ui/priority-badge';
 import { supabase } from '@/integrations/supabase/client';
-import type { Tables } from '@/integrations/supabase/types';
+import type { DbRequest } from '@/types/database';
 import {
   FileText,
   Clock,
@@ -16,18 +16,19 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useEffect, useState } from 'react';
+import type { Status, Priority } from '@/types/request';
 
 export default function Inicio() {
   const [stats, setStats] = useState({ total: 0, pendentes: 0, emAnalise: 0, emAndamento: 0, concluidos: 0, urgentes: 0 });
-  const [recentRequests, setRecentRequests] = useState<Tables<'requests'>[]>([]);
+  const [recentRequests, setRecentRequests] = useState<DbRequest[]>([]);
 
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase
         .from('requests')
         .select('*')
-        .order('createdAt', { ascending: false });
-      const rows = (data ?? []) as Tables<'requests'>[];
+        .order('created_at', { ascending: false });
+      const rows = (data ?? []) as DbRequest[];
       setRecentRequests(rows.slice(0, 4));
       const total = rows.length;
       const pendentes = rows.filter((r) => r.status === 'pendente').length;
@@ -108,20 +109,20 @@ export default function Inicio() {
                     <h3 className="font-medium text-foreground truncate">
                       {request.assunto}
                     </h3>
-                    <StatusBadge status={request.status} />
-                    <PriorityBadge priority={request.prioridade} />
+                    <StatusBadge status={request.status as Status} />
+                    <PriorityBadge priority={request.prioridade as Priority} />
                   </div>
                   <p className="text-sm text-muted-foreground truncate mb-2">
-                    {request.orgaoSolicitante}
+                    {request.orgao_solicitante}
                   </p>
                   <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                    <span>SEI: {request.numeroSEI}</span>
+                    <span>SEI: {request.numero_sei}</span>
                     <span>
-                      {format(new Date(request.dataSolicitacao), 'dd/MM/yyyy', { locale: ptBR })}
+                      {format(new Date(request.data_solicitacao), 'dd/MM/yyyy', { locale: ptBR })}
                     </span>
-                    {request.posicaoFila !== undefined && request.posicaoFila > 0 && (
+                    {request.posicao_fila !== null && request.posicao_fila > 0 && (
                       <span className="text-primary font-medium">
-                        Posição na fila: #{request.posicaoFila}
+                        Posição na fila: #{request.posicao_fila}
                       </span>
                     )}
                   </div>
