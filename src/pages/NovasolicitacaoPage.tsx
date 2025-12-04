@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ASSUNTOS_CNMP, Priority, RequestType } from '@/types/request';
-import type { Request } from '@/types/request';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { Upload, X, FileText, ArrowLeft, Send } from 'lucide-react';
@@ -34,18 +33,16 @@ const PRIORITIES: { value: Priority; label: string }[] = [
 
 export default function NovaSolicitacaoPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const editRequest = (location.state as { request?: Request } | null)?.request;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [formData, setFormData] = useState({
-    orgaoSolicitante: editRequest?.orgaoSolicitante ?? '',
-    tipoSolicitacao: (editRequest?.tipoSolicitacao as RequestType | '') ?? ('' as RequestType | ''),
-    numeroSEI: editRequest?.numeroSEI ?? '',
-    numeroSIMP: editRequest?.numeroSIMP ?? '',
-    assunto: editRequest?.assunto ?? '',
-    descricao: editRequest?.descricao ?? '',
-    prioridade: (editRequest?.prioridade as Priority) ?? ('media' as Priority),
+    orgaoSolicitante: '',
+    tipoSolicitacao: '' as RequestType | '',
+    numeroSEI: '',
+    numeroSIMP: '',
+    assunto: '',
+    descricao: '',
+    prioridade: 'media' as Priority,
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,132 +99,75 @@ export default function NovaSolicitacaoPage() {
     }
 
     setIsSubmitting(true);
-    if (editRequest) {
-      const { error } = await supabase.from('requests').update({
-        orgaoSolicitante: formData.orgaoSolicitante,
-        tipoSolicitacao: formData.tipoSolicitacao as RequestType,
-        numeroSEI: formData.numeroSEI,
-        numeroSIMP: formData.numeroSIMP || null,
-        assunto: formData.assunto,
-        descricao: formData.descricao,
-        prioridade: formData.prioridade as Priority,
-        updatedAt: new Date().toISOString(),
-      }).eq('id', editRequest.id);
-      if (!error) {
-        toast({
-          title: 'Solicitação atualizada!',
-          description: 'As alterações foram salvas com sucesso.',
-        });
-        navigate('/gerenciar');
-      } else {
-        toast({ title: 'Falha ao atualizar', description: String(error.message || error.name || error), variant: 'destructive' });
-        setIsSubmitting(false);
+    
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    
+    const now = new Date();
+    const insertPayload = {
+      user_id: userId ?? null,
+      orgao_solicitante: formData.orgaoSolicitante,
+      tipo_solicitacao: formData.tipoSolicitacao as RequestType,
+      data_solicitacao: now.toISOString().slice(0, 10),
+      numero_sei: formData.numeroSEI,
+      numero_simp: formData.numeroSIMP || null,
+      assunto: formData.assunto,
+      descricao: formData.descricao,
+      prioridade: formData.prioridade as Priority,
+      status: 'pendente',
+    };
+    
+    const { data, error } = await supabase.from('requests').insert(insertPayload).select('id').single();
+    
+    if (!error && data) {
+      toast({
+        title: 'Solicitação enviada!',
+        description: 'Sua solicitação foi registrada com sucesso.',
+      });
+      
+      const requestId = data.id;
+      
+      // Create initial timeline event
+      await supabase.from('timeline_events').insert({
+        request_id: requestId,
+        title: 'Solicitação Criada',
+        description: 'A solicitação foi registrada no sistema.',
+        status: 'pendente',
+        created_by: userId,
+      });
+      
+      // Upload attachments if any
+      if (files.length > 0) {
+        for (const file of files) {
+          const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const path = `${requestId}/${Date.now()}_${clean}`;
+          const { error: uploadError } = await supabase.storage.from('attachments').upload(path, file, { upsert: true });
+          if (!uploadError) {
+            const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
+            await supabase.from('attachments').insert({
+              request_id: requestId,
+              name: file.name,
+              type: file.type || 'application/octet-stream',
+              size: file.size,
+              url: urlData?.publicUrl ?? '',
+            });
+          }
+        }
       }
+      
+      navigate('/minhas-solicitacoes');
     } else {
-      const now = new Date();
-      const insertPayload = {
-        orgaoSolicitante: formData.orgaoSolicitante,
-        tipoSolicitacao: formData.tipoSolicitacao as RequestType,
-        dataSolicitacao: now.toISOString().slice(0,10),
-        numeroSEI: formData.numeroSEI,
-        numeroSIMP: formData.numeroSIMP || null,
-        assunto: formData.assunto,
-        descricao: formData.descricao,
-        prioridade: formData.prioridade as Priority,
-        status: 'pendente' as const,
-        posicaoFila: null,
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      };
-      const { data, error } = await supabase.from('requests').insert(insertPayload).select('id').single();
-      if (!error) {
-        toast({
-          title: 'Solicitação enviada!',
-          description: 'Sua solicitação foi registrada com sucesso. Você pode acompanhá-la em "Minhas Solicitações".',
-        });
-        const requestId = (data as { id: string }).id;
-        if (files.length > 0) {
-          const uploads = await Promise.all(
-            files.map(async (file) => {
-              const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-              const path = `${requestId}/${Date.now()}_${clean}`;
-              let lastError: any = null;
-              for (let attempt = 0; attempt < 3; attempt++) {
-                const up = await supabase.storage.from('attachments').upload(path, file, { upsert: true });
-                if (!up.error) {
-                  const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
-                  const publicUrl = urlData?.publicUrl ?? '';
-                  const ins = await supabase.from('attachments').insert({ requestId, name: file.name, type: file.type || (clean.split('.').pop() || ''), size: file.size, url: publicUrl, uploadedAt: new Date().toISOString() });
-                  if (!ins.error) return { ok: true };
-                  lastError = ins.error;
-                } else {
-                  lastError = up.error;
-                }
-                await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-              }
-              return { ok: false, error: lastError };
-            })
-          );
-          const anyFail = uploads.some((r) => !r.ok);
-          if (anyFail) {
-            try {
-              const key = `attachments:local:${requestId}`;
-              const prevRaw = localStorage.getItem(key);
-              const prev = prevRaw ? JSON.parse(prevRaw) : [];
-              const processed = await Promise.all(
-                files.map(async (file) => {
-                  const dataUrl = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(String(reader.result));
-                    reader.onerror = () => reject(new Error('reader'));
-                    reader.readAsDataURL(file);
-                  });
-                  return { id: `local-${Date.now()}-${file.name}`, requestId, name: file.name, type: file.type, size: file.size, url: dataUrl, uploadedAt: new Date().toISOString() };
-                })
-              );
-              localStorage.setItem(key, JSON.stringify([...processed, ...prev]));
-              toast({ title: 'Anexos serão enviados ao servidor em segundo plano', description: 'Foram registrados localmente e serão sincronizados automaticamente.', variant: 'default' });
-            } catch { void 0; }
-          }
-        }
-        navigate('/minhas-solicitacoes');
-      } else {
-        try {
-          const localId = `local-${Date.now()}`;
-          const localItem = { id: localId, ...insertPayload } as any;
-          const key = 'requests:local';
-          const prevRaw = localStorage.getItem(key);
-          const prev = prevRaw ? JSON.parse(prevRaw) : [];
-          prev.unshift(localItem);
-          localStorage.setItem(key, JSON.stringify(prev));
-          if (files.length > 0) {
-            const keyAtt = `attachments:local:${localId}`;
-            const processed = await Promise.all(
-              files.map(async (file) => {
-                const dataUrl = await new Promise<string>((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onload = () => resolve(String(reader.result));
-                  reader.onerror = () => reject(new Error('reader'));
-                  reader.readAsDataURL(file);
-                });
-                return { id: `local-${Date.now()}-${file.name}`, requestId: localId, name: file.name, type: file.type, size: file.size, url: dataUrl, uploadedAt: new Date().toISOString() };
-              })
-            );
-            localStorage.setItem(keyAtt, JSON.stringify(processed));
-          }
-          toast({ title: 'Solicitação salva localmente', description: 'O servidor não pôde registrar. A solicitação ficará visível em Minhas Solicitações neste navegador.', variant: 'default' });
-          navigate('/minhas-solicitacoes');
-        } catch {
-          toast({ title: 'Falha ao enviar solicitação', description: String(error.message || error.name || error), variant: 'destructive' });
-        }
-        setIsSubmitting(false);
-      }
+      toast({
+        title: 'Erro ao enviar',
+        description: error?.message || 'Tente novamente.',
+        variant: 'destructive',
+      });
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
@@ -239,10 +179,10 @@ export default function NovaSolicitacaoPage() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold font-display text-foreground">
-            {editRequest ? 'Editar Solicitação' : 'Nova Solicitação'}
+            Nova Solicitação
           </h1>
           <p className="text-muted-foreground">
-            {editRequest ? 'Atualize os campos da solicitação selecionada' : 'Preencha os campos abaixo para registrar sua demanda'}
+            Preencha os campos abaixo para registrar sua demanda
           </p>
         </div>
       </div>
@@ -258,7 +198,6 @@ export default function NovaSolicitacaoPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Tipo de Solicitação */}
             <div className="space-y-2">
               <Label>Tipo de Solicitação *</Label>
               <Select
@@ -280,7 +219,6 @@ export default function NovaSolicitacaoPage() {
               </Select>
             </div>
 
-            {/* Órgão Solicitante */}
             <div className="space-y-2">
               <Label htmlFor="orgao">Órgão Solicitante *</Label>
               <Input
@@ -293,35 +231,33 @@ export default function NovaSolicitacaoPage() {
               />
             </div>
 
-            {/* SEI e SIMP */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-              <Label htmlFor="sei">Número do SEI *</Label>
-              <Input
-                id="sei"
-                placeholder="Ex.: 12.34.2025.0001234/0001-01"
-                value={formData.numeroSEI}
-                maxLength={26}
-                onChange={(e) =>
-                  setFormData({ ...formData, numeroSEI: formatSEI(e.target.value) })
-                }
-              />
+                <Label htmlFor="sei">Número do SEI *</Label>
+                <Input
+                  id="sei"
+                  placeholder="Ex.: 12.34.2025.0001234/0001-01"
+                  value={formData.numeroSEI}
+                  maxLength={26}
+                  onChange={(e) =>
+                    setFormData({ ...formData, numeroSEI: formatSEI(e.target.value) })
+                  }
+                />
               </div>
               <div className="space-y-2">
-              <Label htmlFor="simp">Número do SIMP</Label>
-              <Input
-                id="simp"
-                placeholder="Ex.: 123456-789/2025"
-                value={formData.numeroSIMP}
-                maxLength={15}
-                onChange={(e) =>
-                  setFormData({ ...formData, numeroSIMP: formatSIMP(e.target.value) })
-                }
-              />
+                <Label htmlFor="simp">Número do SIMP</Label>
+                <Input
+                  id="simp"
+                  placeholder="Ex.: 123456-789/2025"
+                  value={formData.numeroSIMP}
+                  maxLength={15}
+                  onChange={(e) =>
+                    setFormData({ ...formData, numeroSIMP: formatSIMP(e.target.value) })
+                  }
+                />
               </div>
             </div>
 
-            {/* Assunto */}
             <div className="space-y-2">
               <Label>Assunto (Tabela CNMP) *</Label>
               <Select
@@ -343,7 +279,6 @@ export default function NovaSolicitacaoPage() {
               </Select>
             </div>
 
-            {/* Prioridade */}
             <div className="space-y-2">
               <Label>Prioridade *</Label>
               <Select
@@ -365,7 +300,6 @@ export default function NovaSolicitacaoPage() {
               </Select>
             </div>
 
-            {/* Descrição */}
             <div className="space-y-2">
               <Label htmlFor="descricao">Descrição da Solicitação *</Label>
               <Textarea
@@ -379,7 +313,6 @@ export default function NovaSolicitacaoPage() {
               />
             </div>
 
-            {/* Anexos */}
             <div className="space-y-3">
               <Label>Anexos</Label>
               <div
@@ -407,7 +340,6 @@ export default function NovaSolicitacaoPage() {
                 </label>
               </div>
 
-              {/* File List */}
               {files.length > 0 && (
                 <div className="space-y-2">
                   {files.map((file, index) => (
@@ -437,20 +369,19 @@ export default function NovaSolicitacaoPage() {
               )}
             </div>
 
-            {/* Submit */}
             <div className="flex gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => navigate(-1)}
                 className="flex-1"
+                onClick={() => navigate(-1)}
               >
                 Cancelar
               </Button>
               <Button
                 type="submit"
-                disabled={isSubmitting}
                 className="flex-1 gradient-primary border-0"
+                disabled={isSubmitting}
               >
                 {isSubmitting ? (
                   'Enviando...'

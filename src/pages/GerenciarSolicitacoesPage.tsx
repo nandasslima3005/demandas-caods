@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import type { Tables } from '@/integrations/supabase/types';
+import type { DbRequest } from '@/types/database';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { PriorityBadge } from '@/components/ui/priority-badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -26,10 +26,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Status, Priority, STATUS_LABELS, PRIORITY_LABELS, ASSUNTOS_CNMP, RequestType } from '@/types/request';
-import type { Request } from '@/types/request';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Search, Filter, MoreHorizontal, Eye, Edit, Trash2, SlidersHorizontal, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, MoreHorizontal, Eye, Edit, Trash2, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -45,83 +44,68 @@ export default function GerenciarSolicitacoesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
-  type SortKey = 'assunto' | 'orgaoSolicitante' | 'numeroSEI' | 'dataSolicitacao' | 'status' | 'prioridade';
+  type SortKey = 'assunto' | 'orgao_solicitante' | 'numero_sei' | 'data_solicitacao' | 'status' | 'prioridade';
   const [sortKey, setSortKey] = useState<SortKey>();
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [, setTick] = useState(0);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
-    orgaoSolicitante: '',
-    tipoSolicitacao: '' as RequestType | '',
-    numeroSEI: '',
-    numeroSIMP: '',
+    orgao_solicitante: '',
+    tipo_solicitacao: '' as RequestType | '',
+    numero_sei: '',
+    numero_simp: '',
     assunto: '',
     descricao: '',
     prioridade: 'media' as Priority,
     status: 'pendente' as Status,
   });
-  const [requests, setRequests] = useState<Request[]>([]);
+  const [requests, setRequests] = useState<DbRequest[]>([]);
   const [role, setRole] = useState<string>('');
 
   useEffect(() => {
     const loadRole = async () => {
       const { data } = await supabase.auth.getUser();
-      const meta = data.user?.user_metadata ?? {};
-      setRole((meta.role as string) ?? '');
+      if (data.user) {
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
+        setRole(roleData?.role ?? '');
+      }
     };
     loadRole();
+    
     const load = async () => {
       const { data, error } = await supabase
         .from('requests')
         .select('*')
-        .order('createdAt', { ascending: false });
-      const remote = (error ? [] : (data ?? [])) as Tables<'requests'>[];
-      let localRows: Tables<'requests'>[] = [];
-      try {
-        const raw = localStorage.getItem('requests:local');
-        const arr = raw ? JSON.parse(raw) : [];
-        localRows = Array.isArray(arr) ? arr : [];
-      } catch { localRows = []; }
-      const rows = [...localRows, ...remote] as Tables<'requests'>[];
-      // apply local overrides to remote rows
-      try {
-        const rawOv = localStorage.getItem('requests:overrides');
-        const overrides = rawOv ? JSON.parse(rawOv) : {};
-        for (let i = 0; i < rows.length; i++) {
-          const r = rows[i] as any;
-          const ov = overrides[String(r.id)];
-          if (ov) rows[i] = { ...r, ...ov } as any;
-        }
-      } catch { void 0; }
-      const mapped = rows.map((r) => ({
-        id: String(r.id),
-        orgaoSolicitante: r.orgaoSolicitante,
-        tipoSolicitacao: r.tipoSolicitacao,
-        dataSolicitacao: r.dataSolicitacao,
-        numeroSEI: r.numeroSEI,
-        numeroSIMP: r.numeroSIMP ?? undefined,
-        assunto: r.assunto,
-        descricao: r.descricao,
-        encaminhamento: r.encaminhamento ?? undefined,
-        prioridade: r.prioridade,
-        status: r.status,
-        anexos: [],
-        timeline: [],
-        posicaoFila: r.posicaoFila ?? undefined,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      })) as Request[];
-      setRequests(mapped);
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        setRequests(data as DbRequest[]);
+      }
     };
     load();
   }, []);
 
+  const daysInQueue = (req: DbRequest) => {
+    if (req.status !== 'pendente' && req.status !== 'em_analise') return null;
+    const start = new Date(req.created_at);
+    const now = new Date();
+    return Math.max(0, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+  };
+
+  const badgeClass = (days: number) => {
+    if (days <= 3) return 'bg-muted text-foreground';
+    if (days <= 7) return 'bg-amber-100 text-amber-800';
+    return 'bg-red-100 text-red-800';
+  };
+
   const filteredRequests = requests.filter((request) => {
     const matchesSearch =
       request.assunto.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.orgaoSolicitante.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.numeroSEI.includes(searchTerm);
+      request.orgao_solicitante.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (request.numero_sei?.includes(searchTerm) ?? false);
 
     const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
     const matchesPriority = priorityFilter === 'all' || request.prioridade === priorityFilter;
@@ -129,11 +113,11 @@ export default function GerenciarSolicitacoesPage() {
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
-  const getValue = (req: Request, key: SortKey): string | number => {
-    if (key === 'dataSolicitacao') return new Date(req.dataSolicitacao).getTime();
-    if (key === 'status') return STATUS_LABELS[req.status];
-    if (key === 'prioridade') return PRIORITY_LABELS[req.prioridade];
-    return req[key] as string;
+  const getValue = (req: DbRequest, key: SortKey): string | number => {
+    if (key === 'data_solicitacao') return new Date(req.data_solicitacao).getTime();
+    if (key === 'status') return STATUS_LABELS[req.status as Status] ?? req.status;
+    if (key === 'prioridade') return PRIORITY_LABELS[req.prioridade as Priority] ?? req.prioridade;
+    return (req as any)[key] as string;
   };
 
   const sortedRequests = [...filteredRequests].sort((a, b) => {
@@ -155,19 +139,26 @@ export default function GerenciarSolicitacoesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (role !== 'gestor') { toast({ title: 'Acesso negado', description: 'Somente gestores podem excluir.', variant: 'destructive' }); return; }
+    if (role !== 'gestor') {
+      toast({ title: 'Acesso negado', description: 'Somente gestores podem excluir.', variant: 'destructive' });
+      return;
+    }
     await supabase.from('requests').delete().eq('id', id);
     setRequests(prev => prev.filter(r => r.id !== id));
+    toast({ title: 'Solicitação excluída' });
   };
 
-  const startEdit = (req: Request) => {
-    if (role !== 'gestor') { toast({ title: 'Acesso negado', description: 'Somente gestores podem editar.', variant: 'destructive' }); return; }
+  const startEdit = (req: DbRequest) => {
+    if (role !== 'gestor') {
+      toast({ title: 'Acesso negado', description: 'Somente gestores podem editar.', variant: 'destructive' });
+      return;
+    }
     setEditId(req.id);
     setEditForm({
-      orgaoSolicitante: req.orgaoSolicitante,
-      tipoSolicitacao: req.tipoSolicitacao as RequestType,
-      numeroSEI: req.numeroSEI,
-      numeroSIMP: req.numeroSIMP ?? '',
+      orgao_solicitante: req.orgao_solicitante,
+      tipo_solicitacao: req.tipo_solicitacao as RequestType,
+      numero_sei: req.numero_sei ?? '',
+      numero_simp: req.numero_simp ?? '',
       assunto: req.assunto,
       descricao: req.descricao,
       prioridade: req.prioridade as Priority,
@@ -177,67 +168,45 @@ export default function GerenciarSolicitacoesPage() {
   };
 
   const saveEdit = async () => {
-    if (!editId) return;
-    if (role !== 'gestor') { toast({ title: 'Acesso negado', description: 'Somente gestores podem editar.', variant: 'destructive' }); return; }
-    const payload = {
-      orgaoSolicitante: editForm.orgaoSolicitante,
-      tipoSolicitacao: editForm.tipoSolicitacao as RequestType,
-      numeroSEI: editForm.numeroSEI,
-      numeroSIMP: editForm.numeroSIMP || null,
+    if (!editId || role !== 'gestor') return;
+    
+    const { error } = await supabase.from('requests').update({
+      orgao_solicitante: editForm.orgao_solicitante,
+      tipo_solicitacao: editForm.tipo_solicitacao,
+      numero_sei: editForm.numero_sei,
+      numero_simp: editForm.numero_simp || null,
       assunto: editForm.assunto,
       descricao: editForm.descricao,
-      prioridade: editForm.prioridade as Priority,
-      status: editForm.status as Status,
-      updatedAt: new Date().toISOString(),
-    };
-    const startDate = (() => {
-      const current = requests.find(r => r.id === editId);
-      return current?.createdAt ? new Date(current.createdAt) : (current?.dataSolicitacao ? new Date(current.dataSolicitacao) : new Date());
-    })();
-    const days = Math.max(0, Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-    let newPos = 0;
-    const nextList = requests.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: (payload as any).numeroSIMP ?? undefined } as Request : r);
-    const pendentes = nextList.filter(r => r.status === 'pendente').sort((a, b) => new Date(a.createdAt || a.dataSolicitacao).getTime() - new Date(b.createdAt || b.dataSolicitacao).getTime());
-    const idx = pendentes.findIndex(r => r.id === editId);
-    newPos = idx >= 0 ? idx + 1 : 0;
-    if (String(editId).startsWith('local-')) {
-      try {
-        const key = 'requests:local';
-        const raw = localStorage.getItem(key);
-        const arr = raw ? JSON.parse(raw) : [];
-        const next = Array.isArray(arr) ? arr.map((item: any) => item.id === editId ? { ...item, ...payload, posicaoFila: newPos } : item) : [];
-        localStorage.setItem(key, JSON.stringify(next));
-      } catch { void 0; }
-      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined, posicaoFila: newPos } as Request : r));
-      toast({ title: 'Solicitação atualizada', description: 'Alterações salvas localmente.' });
-      setIsEditOpen(false);
-      return;
-    }
-    const { error } = await supabase.from('requests').update({ ...payload, posicaoFila: newPos }).eq('id', editId);
+      prioridade: editForm.prioridade,
+      status: editForm.status,
+    }).eq('id', editId);
+    
     if (!error) {
-      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined, posicaoFila: newPos } as Request : r));
-      try {
-        await supabase.from('timeline_events').insert({ requestId: editId, date: new Date().toISOString(), title: 'Status Atualizado', description: `Status: ${payload.status} • Dias na fila: ${days}`, status: payload.status, user: 'Gestor' });
-      } catch { void 0; }
-      toast({ title: 'Solicitação atualizada', description: 'As alterações foram salvas.' });
+      setRequests(prev => prev.map(r => 
+        r.id === editId 
+          ? { ...r, ...editForm, numero_simp: editForm.numero_simp || null } 
+          : r
+      ));
+      
+      // Add timeline event
+      const { data: userData } = await supabase.auth.getUser();
+      await supabase.from('timeline_events').insert({
+        request_id: editId,
+        title: 'Status Atualizado',
+        description: `Status alterado para: ${STATUS_LABELS[editForm.status as Status]}`,
+        status: editForm.status,
+        created_by: userData.user?.id,
+      });
+      
+      toast({ title: 'Solicitação atualizada' });
       setIsEditOpen(false);
     } else {
-      try {
-        const key = 'requests:overrides';
-        const raw = localStorage.getItem(key);
-        const map = raw ? JSON.parse(raw) : {};
-        map[editId] = { ...payload, posicaoFila: newPos };
-        localStorage.setItem(key, JSON.stringify(map));
-      } catch { void 0; }
-      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined, posicaoFila: newPos } as Request : r));
-      toast({ title: 'Solicitação atualizada', description: 'Servidor indisponível. Alterações salvas localmente e serão sincronizadas.', variant: 'default' });
-      setIsEditOpen(false);
+      toast({ title: 'Erro ao atualizar', variant: 'destructive' });
     }
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold font-display text-foreground">
           Gerenciar Solicitações
@@ -247,7 +216,6 @@ export default function GerenciarSolicitacoesPage() {
         </p>
       </div>
 
-      {/* Filters */}
       <Card className="shadow-card">
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-3">
@@ -304,7 +272,6 @@ export default function GerenciarSolicitacoesPage() {
         </p>
       </div>
 
-      {/* Table */}
       <Card className="shadow-card">
         <CardContent className="p-0">
           <Table>
@@ -316,18 +283,18 @@ export default function GerenciarSolicitacoesPage() {
                   </button>
                 </TableHead>
                 <TableHead className="text-center uppercase text-black">
-                  <button className="flex items-center justify-center gap-1 w-full uppercase" onClick={() => handleSort('orgaoSolicitante')}>
-                    Órgão Solicitante {sortKey === 'orgaoSolicitante' ? (sortOrder === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
+                  <button className="flex items-center justify-center gap-1 w-full uppercase" onClick={() => handleSort('orgao_solicitante')}>
+                    Órgão {sortKey === 'orgao_solicitante' ? (sortOrder === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
                   </button>
                 </TableHead>
                 <TableHead className="text-center uppercase text-black">
-                  <button className="flex items-center justify-center gap-1 w-full uppercase" onClick={() => handleSort('numeroSEI')}>
-                    SEI {sortKey === 'numeroSEI' ? (sortOrder === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
+                  <button className="flex items-center justify-center gap-1 w-full uppercase" onClick={() => handleSort('numero_sei')}>
+                    SEI {sortKey === 'numero_sei' ? (sortOrder === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
                   </button>
                 </TableHead>
                 <TableHead className="text-center uppercase text-black">
-                  <button className="flex items-center justify-center gap-1 w-full uppercase" onClick={() => handleSort('dataSolicitacao')}>
-                    Data {sortKey === 'dataSolicitacao' ? (sortOrder === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
+                  <button className="flex items-center justify-center gap-1 w-full uppercase" onClick={() => handleSort('data_solicitacao')}>
+                    Data {sortKey === 'data_solicitacao' ? (sortOrder === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
                   </button>
                 </TableHead>
                 <TableHead className="text-center uppercase text-black">
@@ -351,16 +318,16 @@ export default function GerenciarSolicitacoesPage() {
                     {request.assunto}
                   </TableCell>
                   <TableCell className="max-w-[150px] truncate">
-                    {request.orgaoSolicitante}
+                    {request.orgao_solicitante}
                   </TableCell>
                   <TableCell className="font-mono text-sm">
-                    {request.numeroSEI}
+                    {request.numero_sei}
                   </TableCell>
                   <TableCell>
-                    {format(new Date(request.dataSolicitacao), 'dd/MM/yy', { locale: ptBR })}
+                    {format(new Date(request.data_solicitacao), 'dd/MM/yy', { locale: ptBR })}
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={request.status} showIcon={false} />
+                    <StatusBadge status={request.status as Status} showIcon={false} />
                   </TableCell>
                   <TableCell className="text-center">
                     {(() => {
@@ -370,7 +337,7 @@ export default function GerenciarSolicitacoesPage() {
                     })()}
                   </TableCell>
                   <TableCell>
-                    <PriorityBadge priority={request.prioridade} showIcon={false} />
+                    <PriorityBadge priority={request.prioridade as Priority} showIcon={false} />
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -386,18 +353,17 @@ export default function GerenciarSolicitacoesPage() {
                             Visualizar
                           </Link>
                         </DropdownMenuItem>
-                        {role === 'gestor' && (
-                          <>
-                            <DropdownMenuItem onClick={() => startEdit(request)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDelete(request.id)} className="text-destructive focus:text-destructive">
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Excluir
-                            </DropdownMenuItem>
-                          </>
-                        )}
+                        <DropdownMenuItem onClick={() => startEdit(request)}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => handleDelete(request.id)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Excluir
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -407,134 +373,109 @@ export default function GerenciarSolicitacoesPage() {
           </Table>
         </CardContent>
       </Card>
+
       <Sheet open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <SheetContent side="right" className="sm:max-w-md">
+        <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Editar Solicitação</SheetTitle>
           </SheetHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Órgão Solicitante</Label>
-              <Input value={editForm.orgaoSolicitante} onChange={(e) => setEditForm({ ...editForm, orgaoSolicitante: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v as Status })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pendente">
-                    {STATUS_LABELS.pendente}
-                  </SelectItem>
-                  <SelectItem value="em_analise">{STATUS_LABELS.em_analise}</SelectItem>
-                  <SelectItem value="concluido">{STATUS_LABELS.concluido}</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                value={editForm.orgao_solicitante}
+                onChange={(e) => setEditForm({ ...editForm, orgao_solicitante: e.target.value })}
+              />
             </div>
             <div className="space-y-2">
               <Label>Tipo de Solicitação</Label>
-              <Select value={editForm.tipoSolicitacao} onValueChange={(v) => setEditForm({ ...editForm, tipoSolicitacao: v as RequestType })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
+              <Select
+                value={editForm.tipo_solicitacao}
+                onValueChange={(v) => setEditForm({ ...editForm, tipo_solicitacao: v as RequestType })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {(['Apoio aos Órgãos de Execução - 1º Grau','Apoio aos Órgãos de Execução - 2º Grau','Atendimento ao Público','PGA de Políticas Públicas'] as RequestType[]).map((type) => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  {['Apoio aos Órgãos de Execução - 1º Grau', 'Apoio aos Órgãos de Execução - 2º Grau', 'Atendimento ao Público', 'PGA de Políticas Públicas'].map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Número SEI</Label>
-                <Input maxLength={26} value={editForm.numeroSEI} onChange={(e) => setEditForm({ ...editForm, numeroSEI: formatSEI(e.target.value) })} />
+                <Input
+                  value={editForm.numero_sei}
+                  onChange={(e) => setEditForm({ ...editForm, numero_sei: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Número SIMP</Label>
-                <Input maxLength={15} value={editForm.numeroSIMP} onChange={(e) => setEditForm({ ...editForm, numeroSIMP: formatSIMP(e.target.value) })} />
+                <Input
+                  value={editForm.numero_simp}
+                  onChange={(e) => setEditForm({ ...editForm, numero_simp: e.target.value })}
+                />
               </div>
             </div>
             <div className="space-y-2">
               <Label>Assunto</Label>
-              <Select value={editForm.assunto} onValueChange={(v) => setEditForm({ ...editForm, assunto: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o assunto" />
-                </SelectTrigger>
+              <Select
+                value={editForm.assunto}
+                onValueChange={(v) => setEditForm({ ...editForm, assunto: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ASSUNTOS_CNMP.map((assunto) => (
-                    <SelectItem key={assunto} value={assunto}>{assunto}</SelectItem>
+                  {ASSUNTOS_CNMP.map((a) => (
+                    <SelectItem key={a} value={a}>{a}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Descrição</Label>
-              <Textarea rows={4} value={editForm.descricao} onChange={(e) => setEditForm({ ...editForm, descricao: e.target.value })} />
+              <Textarea
+                value={editForm.descricao}
+                onChange={(e) => setEditForm({ ...editForm, descricao: e.target.value })}
+                rows={4}
+              />
             </div>
-            <div className="space-y-2">
-              <Label>Prioridade</Label>
-              <Select value={editForm.prioridade} onValueChange={(v) => setEditForm({ ...editForm, prioridade: v as Priority })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a prioridade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(['baixa','media','alta'] as Priority[]).map((p) => (
-                    <SelectItem key={p} value={p}>{PRIORITY_LABELS[p]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={editForm.status}
+                  onValueChange={(v) => setEditForm({ ...editForm, status: v as Status })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Prioridade</Label>
+                <Select
+                  value={editForm.prioridade}
+                  onValueChange={(v) => setEditForm({ ...editForm, prioridade: v as Priority })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <SheetFooter>
             <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancelar</Button>
-            <Button onClick={saveEdit}>Salvar</Button>
+            <Button className="gradient-primary border-0" onClick={saveEdit}>Salvar</Button>
           </SheetFooter>
         </SheetContent>
       </Sheet>
     </div>
   );
 }
-  const formatSEI = (value: string) => {
-    const digits = value.replace(/\D/g, '').slice(0, 21);
-    const s1 = digits.slice(0, 2);
-    const s2 = digits.slice(2, 4);
-    const s3 = digits.slice(4, 8);
-    const s4 = digits.slice(8, 15);
-    const s5 = digits.slice(15, 19);
-    const s6 = digits.slice(19, 21);
-    let result = '';
-    if (s1) result += s1;
-    if (s2) result += '.' + s2;
-    if (s3) result += '.' + s3;
-    if (s4) result += '.' + s4;
-    if (s5) result += '/' + s5;
-    if (s6) result += '-' + s6;
-    return result;
-  };
-
-  const formatSIMP = (value: string) => {
-    const digits = value.replace(/\D/g, '').slice(0, 13);
-    const s1 = digits.slice(0, 6);
-    const s2 = digits.slice(6, 9);
-    const s3 = digits.slice(9, 13);
-    let result = '';
-    if (s1) result += s1;
-    if (s2) result += '-' + s2;
-    if (s3) result += '/' + s3;
-    return result;
-  };
-  const daysInQueue = (req: Request) => {
-    if (req.status !== 'pendente' && req.status !== 'em_analise') return null;
-    const start = req.createdAt ? new Date(req.createdAt) : new Date(req.dataSolicitacao);
-    const now = new Date();
-    const ms = now.getTime() - start.getTime();
-    const days = Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
-    return days;
-  };
-
-  const badgeClass = (days: number) => {
-    if (days <= 3) return 'bg-muted text-foreground';
-    if (days <= 7) return 'bg-amber-100 text-amber-800';
-    return 'bg-red-100 text-red-800';
-  };

@@ -1,7 +1,8 @@
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useState } from 'react';
-import type { Tables } from '@/integrations/supabase/types';
+import type { DbRequest, DbAttachment, DbTimelineEvent } from '@/types/database';
+import type { Status, Priority } from '@/types/request';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { PriorityBadge } from '@/components/ui/priority-badge';
 import { Timeline } from '@/components/ui/timeline';
@@ -24,81 +25,34 @@ import {
 export default function SolicitacaoDetalhesPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [request, setRequest] = useState<Tables<'requests'> | null>(null);
-  const [attachments, setAttachments] = useState<Tables<'attachments'>[]>([]);
-  const [timeline, setTimeline] = useState<Tables<'timeline_events'>[]>([]);
+  const [request, setRequest] = useState<DbRequest | null>(null);
+  const [attachments, setAttachments] = useState<DbAttachment[]>([]);
+  const [timeline, setTimeline] = useState<DbTimelineEvent[]>([]);
 
   useEffect(() => {
     const load = async () => {
       if (!id) return;
-      if (String(id).startsWith('local-')) {
-        try {
-          const raw = localStorage.getItem('requests:local');
-          const arr = raw ? JSON.parse(raw) : [];
-          const found = Array.isArray(arr) ? (arr.find((r: any) => String(r.id) === String(id)) ?? null) : null;
-          setRequest(found as Tables<'requests'> | null);
-        } catch { setRequest(null); }
-      } else {
-        const { data } = await supabase.from('requests').select('*').eq('id', id).single();
-        if (data) {
-          setRequest((data ?? null) as Tables<'requests'> | null);
-        } else {
-          try {
-            const raw = localStorage.getItem('requests:local');
-            const arr = raw ? JSON.parse(raw) : [];
-            const found = Array.isArray(arr) ? (arr.find((r: any) => String(r.id) === String(id)) ?? null) : null;
-            setRequest(found as Tables<'requests'> | null);
-          } catch { setRequest(null); }
-        }
-      }
-      const { data: att } = await supabase.from('attachments').select('*').eq('requestId', id);
-      let local: Tables<'attachments'>[] = [];
-      try {
-        const raw = localStorage.getItem(`attachments:local:${id}`);
-        const arr = raw ? JSON.parse(raw) : [];
-        local = Array.isArray(arr) ? arr : [];
-      } catch { local = []; }
-      setAttachments([...(local as Tables<'attachments'>[]), ...((att ?? []) as Tables<'attachments'>[])]);
+      
+      const { data } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      
+      setRequest((data as DbRequest) ?? null);
+      
+      const { data: att } = await supabase
+        .from('attachments')
+        .select('*')
+        .eq('request_id', id);
+      setAttachments((att as DbAttachment[]) ?? []);
+      
       const { data: tl } = await supabase
         .from('timeline_events')
         .select('*')
-        .eq('requestId', id)
-        .order('date', { ascending: true });
-      setTimeline((tl ?? []) as Tables<'timeline_events'>[]);
-
-      // Try to sync local attachments for this request
-      if (local.length > 0 && id && !String(id).startsWith('local-')) {
-        const dataUrlToBlob = (dataUrl: string) => {
-          const parts = dataUrl.split(',');
-          const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
-          const bstr = atob(parts[1] || '');
-          let n = bstr.length;
-          const u8arr = new Uint8Array(n);
-          while (n--) u8arr[n] = bstr.charCodeAt(n);
-          return new Blob([u8arr], { type: mime });
-        };
-        const key = `attachments:local:${id}`;
-        const remaining: any[] = [];
-        for (const a of local as any[]) {
-          try {
-            const blob = dataUrlToBlob(a.url);
-            const clean = String(a.name || 'anexo').replace(/[^a-zA-Z0-9._-]/g, '_');
-            const path = `${id}/${Date.now()}_${clean}`;
-            const up = await supabase.storage.from('attachments').upload(path, blob, { upsert: true });
-            if (up.error) { remaining.push(a); continue; }
-            const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
-            const publicUrl = urlData?.publicUrl ?? '';
-            const ins = await supabase.from('attachments').insert({ requestId: id, name: a.name, type: a.type || 'application/octet-stream', size: a.size || 0, url: publicUrl, uploadedAt: new Date().toISOString() });
-            if (ins.error) { remaining.push(a); }
-          } catch { remaining.push(a); }
-        }
-        try {
-          if (remaining.length > 0) localStorage.setItem(key, JSON.stringify(remaining));
-          else localStorage.removeItem(key);
-        } catch { void 0; }
-        const { data: att2 } = await supabase.from('attachments').select('*').eq('requestId', id);
-        setAttachments([...(remaining as Tables<'attachments'>[]), ...((att2 ?? []) as Tables<'attachments'>[])]);
-      }
+        .eq('request_id', id)
+        .order('created_at', { ascending: true });
+      setTimeline((tl as DbTimelineEvent[]) ?? []);
     };
     load();
   }, [id]);
@@ -116,7 +70,6 @@ export default function SolicitacaoDetalhesPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex items-start gap-4">
         <Button
           variant="ghost"
@@ -131,18 +84,17 @@ export default function SolicitacaoDetalhesPage() {
             <h1 className="text-2xl font-bold font-display text-foreground">
               {request.assunto}
             </h1>
-            <StatusBadge status={request.status} />
-            <PriorityBadge priority={request.prioridade} />
+            <StatusBadge status={request.status as Status} />
+            <PriorityBadge priority={request.prioridade as Priority} />
           </div>
           <p className="text-muted-foreground">
-            Solicitação #{request.id} • Criada em{' '}
-            {format(new Date(request.createdAt), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+            Solicitação #{request.id.slice(0, 8)} • Criada em{' '}
+            {format(new Date(request.created_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
           </p>
         </div>
       </div>
 
-      {/* Position Banner */}
-      {request.posicaoFila !== undefined && request.posicaoFila > 0 && (
+      {request.posicao_fila !== null && request.posicao_fila > 0 && (
         <Card className="gradient-primary text-primary-foreground shadow-lg">
           <CardContent className="py-4">
             <div className="flex items-center justify-between">
@@ -156,7 +108,7 @@ export default function SolicitacaoDetalhesPage() {
                 </div>
               </div>
               <div className="text-4xl font-bold font-display">
-                #{request.posicaoFila}
+                #{request.posicao_fila}
               </div>
             </div>
           </CardContent>
@@ -164,9 +116,7 @@ export default function SolicitacaoDetalhesPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Info */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Details Card */}
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="font-display text-lg">
@@ -179,7 +129,7 @@ export default function SolicitacaoDetalhesPage() {
                   <Building2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                   <div>
                     <p className="text-xs text-muted-foreground">Órgão Solicitante</p>
-                    <p className="font-medium">{request.orgaoSolicitante}</p>
+                    <p className="font-medium">{request.orgao_solicitante}</p>
                   </div>
                 </div>
 
@@ -187,7 +137,7 @@ export default function SolicitacaoDetalhesPage() {
                   <FileText className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                   <div>
                     <p className="text-xs text-muted-foreground">Tipo de Solicitação</p>
-                    <p className="font-medium">{request.tipoSolicitacao}</p>
+                    <p className="font-medium">{request.tipo_solicitacao}</p>
                   </div>
                 </div>
 
@@ -195,16 +145,16 @@ export default function SolicitacaoDetalhesPage() {
                   <Hash className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                   <div>
                     <p className="text-xs text-muted-foreground">Número SEI</p>
-                    <p className="font-medium">{request.numeroSEI}</p>
+                    <p className="font-medium">{request.numero_sei}</p>
                   </div>
                 </div>
 
-                {request.numeroSIMP && (
+                {request.numero_simp && (
                   <div className="flex items-start gap-3">
                     <Hash className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                     <div>
                       <p className="text-xs text-muted-foreground">Número SIMP</p>
-                      <p className="font-medium">{request.numeroSIMP}</p>
+                      <p className="font-medium">{request.numero_simp}</p>
                     </div>
                   </div>
                 )}
@@ -214,7 +164,7 @@ export default function SolicitacaoDetalhesPage() {
                   <div>
                     <p className="text-xs text-muted-foreground">Data da Solicitação</p>
                     <p className="font-medium">
-              {format(new Date(request.dataSolicitacao), 'dd/MM/yyyy', { locale: ptBR })}
+                      {format(new Date(request.data_solicitacao), 'dd/MM/yyyy', { locale: ptBR })}
                     </p>
                   </div>
                 </div>
@@ -239,7 +189,6 @@ export default function SolicitacaoDetalhesPage() {
             </CardContent>
           </Card>
 
-          {/* Timeline Card */}
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="font-display text-lg">
@@ -247,14 +196,24 @@ export default function SolicitacaoDetalhesPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Timeline events={timeline.map((e) => ({ id: e.id, date: e.date, title: e.title, description: e.description ?? '', status: e.status, user: e.user ?? undefined }))} />
+              <Timeline events={timeline.map((e) => ({
+                id: e.id,
+                date: e.created_at,
+                title: e.title,
+                description: e.description ?? '',
+                status: e.status as any,
+              }))} />
+                id: e.id,
+                date: e.created_at,
+                title: e.title,
+                description: e.description ?? '',
+                status: e.status,
+              }))} />
             </CardContent>
           </Card>
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-6">
-          {/* Attachments */}
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="font-display text-lg flex items-center gap-2">
@@ -281,21 +240,15 @@ export default function SolicitacaoDetalhesPage() {
                           {(anexo.size / 1024).toFixed(1)} KB
                         </p>
                       </div>
-                      {anexo.url ? (
-                        <a
-                          href={anexo.url}
-                          download
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-muted"
-                        >
-                          <Download className="h-4 w-4" />
-                        </a>
-                      ) : (
-                        <Button variant="ghost" size="icon" className="shrink-0" disabled>
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <a
+                        href={anexo.url}
+                        download
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-muted"
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
                     </div>
                   ))}
                 </div>
@@ -303,7 +256,6 @@ export default function SolicitacaoDetalhesPage() {
             </CardContent>
           </Card>
 
-          {/* Quick Actions */}
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="font-display text-lg">
