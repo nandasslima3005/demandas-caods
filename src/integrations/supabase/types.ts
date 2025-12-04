@@ -7,164 +7,28 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5";
-  };
+    PostgrestVersion: "13.0.5"
+  }
   public: {
     Tables: {
-      profiles: {
-        Row: {
-          id: string;
-          name: string;
-          email: string;
-          phone: string | null;
-          orgao: string | null;
-          role: string | null;
-          avatar_url: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          name: string;
-          email: string;
-          phone?: string | null;
-          orgao?: string | null;
-          role?: string | null;
-          avatar_url?: string | null;
-        };
-        Update: {
-          id?: string;
-          name?: string;
-          email?: string;
-          phone?: string | null;
-          orgao?: string | null;
-          role?: string | null;
-          avatar_url?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-      requests: {
-        Row: {
-          id: string;
-          orgaoSolicitante: string;
-          tipoSolicitacao: string;
-          dataSolicitacao: string;
-          numeroSEI: string;
-          numeroSIMP: string | null;
-          assunto: string;
-          descricao: string;
-          encaminhamento: string | null;
-          prioridade: Database["public"]["Enums"]["priority_enum"];
-          status: Database["public"]["Enums"]["status_enum"];
-          posicaoFila: number | null;
-          createdAt: string;
-          updatedAt: string;
-          createdBy: string | null;
-        };
-        Insert: {
-          id?: string;
-          orgaoSolicitante: string;
-          tipoSolicitacao: string;
-          dataSolicitacao: string;
-          numeroSEI: string;
-          numeroSIMP?: string | null;
-          assunto: string;
-          descricao: string;
-          encaminhamento?: string | null;
-          prioridade: Database["public"]["Enums"]["priority_enum"];
-          status: Database["public"]["Enums"]["status_enum"];
-          posicaoFila?: number | null;
-          createdAt?: string;
-          updatedAt?: string;
-          createdBy?: string | null;
-        };
-        Update: {
-          id?: string;
-          orgaoSolicitante?: string;
-          tipoSolicitacao?: string;
-          dataSolicitacao?: string;
-          numeroSEI?: string;
-          numeroSIMP?: string | null;
-          assunto?: string;
-          descricao?: string;
-          encaminhamento?: string | null;
-          prioridade?: Database["public"]["Enums"]["priority_enum"];
-          status?: Database["public"]["Enums"]["status_enum"];
-          posicaoFila?: number | null;
-          createdAt?: string;
-          updatedAt?: string;
-          createdBy?: string | null;
-        };
-      };
-      attachments: {
-        Row: {
-          id: string;
-          requestId: string;
-          name: string;
-          type: string;
-          size: number;
-          url: string;
-          uploadedAt: string;
-        };
-        Insert: {
-          id?: string;
-          requestId: string;
-          name: string;
-          type: string;
-          size: number;
-          url: string;
-          uploadedAt?: string;
-        };
-        Update: {
-          id?: string;
-          requestId?: string;
-          name?: string;
-          type?: string;
-          size?: number;
-          url?: string;
-          uploadedAt?: string;
-        };
-      };
-      timeline_events: {
-        Row: {
-          id: string;
-          requestId: string;
-          date: string;
-          title: string;
-          description: string | null;
-          status: Database["public"]["Enums"]["status_enum"];
-          user: string | null;
-        };
-        Insert: {
-          id?: string;
-          requestId: string;
-          date: string;
-          title: string;
-          description?: string | null;
-          status: Database["public"]["Enums"]["status_enum"];
-          user?: string | null;
-        };
-        Update: {
-          id?: string;
-          requestId?: string;
-          date?: string;
-          title?: string;
-          description?: string | null;
-          status?: Database["public"]["Enums"]["status_enum"];
-          user?: string | null;
-        };
-      };
-    };
-    Views: Record<string, never>;
-    Functions: Record<string, never>;
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
     Enums: {
-      priority_enum: "baixa" | "media" | "alta" | "urgente";
-      status_enum: "pendente" | "em_analise" | "em_andamento" | "aguardando_resposta" | "concluido";
-    };
-    CompositeTypes: Record<string, never>;
-  };
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
