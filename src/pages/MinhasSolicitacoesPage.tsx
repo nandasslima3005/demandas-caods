@@ -6,6 +6,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { PriorityBadge } from '@/components/ui/priority-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -43,7 +44,18 @@ export default function MinhasSolicitacoesPage() {
         const arr = raw ? JSON.parse(raw) : [];
         local = Array.isArray(arr) ? arr : [];
       } catch { local = []; }
-      setRequests([...local, ...remote]);
+      const combined = [...local, ...remote] as Tables<'requests'>[];
+      const pendentes = combined
+        .filter((r) => r.status === 'pendente')
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const indexMap = new Map<string, number>();
+      pendentes.forEach((r, i) => indexMap.set(String(r.id), i + 1));
+      const withQueue = combined.map((r) => {
+        const current = r.posicaoFila as number | null | undefined;
+        const computed = indexMap.get(String(r.id)) ?? 0;
+        return { ...r, posicaoFila: typeof current === 'number' && current > 0 ? current : computed } as Tables<'requests'>;
+      });
+      setRequests(withQueue);
 
       // Sync local attachments for remote requests
       const dataUrlToBlob = (dataUrl: string) => {
@@ -86,6 +98,21 @@ export default function MinhasSolicitacoesPage() {
     };
     load();
   }, []);
+
+  const daysInQueue = (req: Tables<'requests'>) => {
+    if (req.status !== 'pendente' && req.status !== 'em_analise') return null;
+    const start = req.createdAt ? new Date(req.createdAt) : new Date(req.dataSolicitacao);
+    const now = new Date();
+    const ms = now.getTime() - start.getTime();
+    const days = Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+    return days;
+  };
+
+  const badgeClass = (days: number) => {
+    if (days <= 3) return 'bg-muted text-foreground';
+    if (days <= 7) return 'bg-amber-100 text-amber-800';
+    return 'bg-red-100 text-red-800';
+  };
 
   const filteredRequests = requests.filter((request) => {
     const matchesSearch =
@@ -269,6 +296,16 @@ export default function MinhasSolicitacoesPage() {
                           </p>
                         </div>
                       )}
+                      {(() => {
+                        const d = daysInQueue(request);
+                        if (d === null) return null;
+                        return (
+                          <div className="text-center lg:text-right">
+                            <p className="text-xs text-muted-foreground">Dias</p>
+                            <Badge className={badgeClass(d)}>{d}d</Badge>
+                          </div>
+                        );
+                      })()}
                       <ArrowRight className="h-5 w-5 text-muted-foreground hidden lg:block" />
                     </div>
                   </div>

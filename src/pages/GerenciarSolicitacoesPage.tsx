@@ -190,22 +190,35 @@ export default function GerenciarSolicitacoesPage() {
       status: editForm.status as Status,
       updatedAt: new Date().toISOString(),
     };
+    const startDate = (() => {
+      const current = requests.find(r => r.id === editId);
+      return current?.createdAt ? new Date(current.createdAt) : (current?.dataSolicitacao ? new Date(current.dataSolicitacao) : new Date());
+    })();
+    const days = Math.max(0, Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    let newPos = 0;
+    const nextList = requests.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: (payload as any).numeroSIMP ?? undefined } as Request : r);
+    const pendentes = nextList.filter(r => r.status === 'pendente').sort((a, b) => new Date(a.createdAt || a.dataSolicitacao).getTime() - new Date(b.createdAt || b.dataSolicitacao).getTime());
+    const idx = pendentes.findIndex(r => r.id === editId);
+    newPos = idx >= 0 ? idx + 1 : 0;
     if (String(editId).startsWith('local-')) {
       try {
         const key = 'requests:local';
         const raw = localStorage.getItem(key);
         const arr = raw ? JSON.parse(raw) : [];
-        const next = Array.isArray(arr) ? arr.map((item: any) => item.id === editId ? { ...item, ...payload } : item) : [];
+        const next = Array.isArray(arr) ? arr.map((item: any) => item.id === editId ? { ...item, ...payload, posicaoFila: newPos } : item) : [];
         localStorage.setItem(key, JSON.stringify(next));
       } catch { void 0; }
-      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined } as Request : r));
+      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined, posicaoFila: newPos } as Request : r));
       toast({ title: 'Solicitação atualizada', description: 'Alterações salvas localmente.' });
       setIsEditOpen(false);
       return;
     }
-    const { error } = await supabase.from('requests').update(payload).eq('id', editId);
+    const { error } = await supabase.from('requests').update({ ...payload, posicaoFila: newPos }).eq('id', editId);
     if (!error) {
-      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined } as Request : r));
+      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined, posicaoFila: newPos } as Request : r));
+      try {
+        await supabase.from('timeline_events').insert({ requestId: editId, date: new Date().toISOString(), title: 'Status Atualizado', description: `Status: ${payload.status} • Dias na fila: ${days}`, status: payload.status, user: 'Gestor' });
+      } catch { void 0; }
       toast({ title: 'Solicitação atualizada', description: 'As alterações foram salvas.' });
       setIsEditOpen(false);
     } else {
@@ -213,10 +226,10 @@ export default function GerenciarSolicitacoesPage() {
         const key = 'requests:overrides';
         const raw = localStorage.getItem(key);
         const map = raw ? JSON.parse(raw) : {};
-        map[editId] = payload;
+        map[editId] = { ...payload, posicaoFila: newPos };
         localStorage.setItem(key, JSON.stringify(map));
       } catch { void 0; }
-      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined } as Request : r));
+      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined, posicaoFila: newPos } as Request : r));
       toast({ title: 'Solicitação atualizada', description: 'Servidor indisponível. Alterações salvas localmente e serão sincronizadas.', variant: 'default' });
       setIsEditOpen(false);
     }
@@ -322,6 +335,7 @@ export default function GerenciarSolicitacoesPage() {
                     Status {sortKey === 'status' ? (sortOrder === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
                   </button>
                 </TableHead>
+                <TableHead className="text-center uppercase text-black">Dias</TableHead>
                 <TableHead className="text-center uppercase text-black">
                   <button className="flex items-center justify-center gap-1 w-full uppercase" onClick={() => handleSort('prioridade')}>
                     Prioridade {sortKey === 'prioridade' ? (sortOrder === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
@@ -347,6 +361,13 @@ export default function GerenciarSolicitacoesPage() {
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={request.status} showIcon={false} />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {(() => {
+                      const d = daysInQueue(request);
+                      if (d === null) return <span className="text-muted-foreground">-</span>;
+                      return <Badge className={badgeClass(d)}>{d}d</Badge>;
+                    })()}
                   </TableCell>
                   <TableCell>
                     <PriorityBadge priority={request.prioridade} showIcon={false} />
@@ -502,4 +523,18 @@ export default function GerenciarSolicitacoesPage() {
     if (s2) result += '-' + s2;
     if (s3) result += '/' + s3;
     return result;
+  };
+  const daysInQueue = (req: Request) => {
+    if (req.status !== 'pendente' && req.status !== 'em_analise') return null;
+    const start = req.createdAt ? new Date(req.createdAt) : new Date(req.dataSolicitacao);
+    const now = new Date();
+    const ms = now.getTime() - start.getTime();
+    const days = Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+    return days;
+  };
+
+  const badgeClass = (days: number) => {
+    if (days <= 3) return 'bg-muted text-foreground';
+    if (days <= 7) return 'bg-amber-100 text-amber-800';
+    return 'bg-red-100 text-red-800';
   };

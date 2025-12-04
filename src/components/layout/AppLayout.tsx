@@ -48,12 +48,14 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background">
-      <AppSidebar />
+      <div className="print:hidden">
+        <AppSidebar />
+      </div>
       
       {/* Main Content */}
-      <div className="pl-64 transition-all duration-300">
+      <div className="pl-64 print:pl-0 transition-all duration-300">
         {/* Header */}
-        <header className="sticky top-0 z-30 h-16 bg-card/80 backdrop-blur-sm border-b border-border">
+        <header className="sticky top-0 z-30 h-16 bg-card/80 backdrop-blur-sm border-b border-border print:hidden">
           <div className="flex items-center justify-between h-full px-6">
             <div className="flex items-center gap-4 flex-1 max-w-md">
               <div className="relative flex-1">

@@ -31,8 +31,26 @@ export default function SolicitacaoDetalhesPage() {
   useEffect(() => {
     const load = async () => {
       if (!id) return;
-      const { data } = await supabase.from('requests').select('*').eq('id', id).single();
-      setRequest((data ?? null) as Tables<'requests'> | null);
+      if (String(id).startsWith('local-')) {
+        try {
+          const raw = localStorage.getItem('requests:local');
+          const arr = raw ? JSON.parse(raw) : [];
+          const found = Array.isArray(arr) ? (arr.find((r: any) => String(r.id) === String(id)) ?? null) : null;
+          setRequest(found as Tables<'requests'> | null);
+        } catch { setRequest(null); }
+      } else {
+        const { data } = await supabase.from('requests').select('*').eq('id', id).single();
+        if (data) {
+          setRequest((data ?? null) as Tables<'requests'> | null);
+        } else {
+          try {
+            const raw = localStorage.getItem('requests:local');
+            const arr = raw ? JSON.parse(raw) : [];
+            const found = Array.isArray(arr) ? (arr.find((r: any) => String(r.id) === String(id)) ?? null) : null;
+            setRequest(found as Tables<'requests'> | null);
+          } catch { setRequest(null); }
+        }
+      }
       const { data: att } = await supabase.from('attachments').select('*').eq('requestId', id);
       let local: Tables<'attachments'>[] = [];
       try {
