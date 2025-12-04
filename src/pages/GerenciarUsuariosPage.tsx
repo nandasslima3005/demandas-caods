@@ -6,14 +6,29 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { UserPlus, Shield } from 'lucide-react';
+import { UserPlus, Shield, Trash2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
+interface Profile {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  orgao: string | null;
+}
+
+interface UserRole {
+  user_id: string;
+  role: 'gestor' | 'requisitante';
+}
+
 export default function GerenciarUsuariosPage() {
-  const [role, setRole] = useState<string>('');
-  const [newRole, setNewRole] = useState<'gestor' | 'requisitante'>('gestor');
-  const [emails, setEmails] = useState<string[]>([]);
-  const [delEmail, setDelEmail] = useState<string>('');
+  const [currentRole, setCurrentRole] = useState<string>('');
+  const [newRole, setNewRole] = useState<'gestor' | 'requisitante'>('requisitante');
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [delUserId, setDelUserId] = useState<string>('');
+  const [loading, setLoading] = useState(false);
 
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 11);
@@ -29,16 +44,106 @@ export default function GerenciarUsuariosPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      const meta = data.user?.user_metadata ?? {};
-      setRole((meta.role as string) ?? '');
-      const { data: profiles } = await supabase.from('profiles').select('email').order('email');
-      setEmails((profiles ?? []).map((p: { email: string }) => p.email));
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+
+      // Get current user role
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userData.user.id)
+        .maybeSingle();
+      
+      setCurrentRole(roleData?.role ?? '');
+
+      // If gestor, load all profiles
+      if (roleData?.role === 'gestor') {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('name');
+        setProfiles((profilesData as Profile[]) ?? []);
+      }
     };
     load();
   }, []);
 
-  if (role !== 'gestor') {
+  const handleCadastrar = async () => {
+    const name = (document.getElementById('new-name') as HTMLInputElement)?.value?.trim() || '';
+    const email = (document.getElementById('new-email') as HTMLInputElement)?.value?.trim() || '';
+    const phone = (document.getElementById('new-phone') as HTMLInputElement)?.value || '';
+    const orgao = (document.getElementById('new-orgao') as HTMLInputElement)?.value?.trim() || '';
+    const password = (document.getElementById('new-password') as HTMLInputElement)?.value || '';
+
+    if (!name || !email || !password) {
+      toast({ title: 'Preencha nome, e-mail e senha', variant: 'destructive' });
+      return;
+    }
+
+    setLoading(true);
+    
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name, phone, orgao, role: newRole },
+        emailRedirectTo: `${window.location.origin}/`
+      }
+    });
+
+    if (error) {
+      toast({ title: 'Falha ao cadastrar', description: error.message, variant: 'destructive' });
+      setLoading(false);
+      return;
+    }
+
+    if (data.user) {
+      // Refresh profiles list
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('name');
+      setProfiles((profilesData as Profile[]) ?? []);
+      
+      // Clear form
+      (document.getElementById('new-name') as HTMLInputElement).value = '';
+      (document.getElementById('new-email') as HTMLInputElement).value = '';
+      (document.getElementById('new-phone') as HTMLInputElement).value = '';
+      (document.getElementById('new-orgao') as HTMLInputElement).value = '';
+      (document.getElementById('new-password') as HTMLInputElement).value = '';
+      
+      toast({ title: 'Usuário cadastrado com sucesso!' });
+    }
+    
+    setLoading(false);
+  };
+
+  const handleExcluir = async () => {
+    if (!delUserId) {
+      toast({ title: 'Selecione um usuário', variant: 'destructive' });
+      return;
+    }
+
+    setLoading(true);
+    
+    // Delete profile (cascade will handle user_roles)
+    const { error } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('user_id', delUserId);
+
+    if (error) {
+      toast({ title: 'Falha ao remover', description: 'A remoção completa requer privilégios de administrador.', variant: 'destructive' });
+    } else {
+      setProfiles((prev) => prev.filter((p) => p.user_id !== delUserId));
+      setDelUserId('');
+      toast({ title: 'Perfil removido com sucesso' });
+    }
+    
+    setLoading(false);
+  };
+
+  if (currentRole !== 'gestor') {
     return (
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
         <Card className="shadow-card">
@@ -74,11 +179,11 @@ export default function GerenciarUsuariosPage() {
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Nome Completo</Label>
+              <Label>Nome Completo *</Label>
               <Input id="new-name" placeholder="Nome Completo" />
             </div>
             <div className="space-y-2">
-              <Label>E-mail Institucional</Label>
+              <Label>E-mail Institucional *</Label>
               <Input id="new-email" type="email" placeholder="seuemail@mppi.mp.br" />
             </div>
             <div className="space-y-2">
@@ -102,49 +207,45 @@ export default function GerenciarUsuariosPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Senha</Label>
+              <Label>Senha *</Label>
               <Input id="new-password" type="password" placeholder="Senha temporária" />
             </div>
           </div>
           <div className="flex justify-end">
-            <Button className="gradient-primary border-0" onClick={async () => {
-              const name = (document.getElementById('new-name') as HTMLInputElement)?.value || '';
-              const email = (document.getElementById('new-email') as HTMLInputElement)?.value || '';
-              const phone = (document.getElementById('new-phone') as HTMLInputElement)?.value || '';
-              const orgao = (document.getElementById('new-orgao') as HTMLInputElement)?.value || '';
-              const password = (document.getElementById('new-password') as HTMLInputElement)?.value || '';
-              if (!email || !password) { toast({ title: 'Preencha e-mail e senha', variant: 'destructive' }); return; }
-              const { error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone, orgao, role: newRole } } });
-              if (error) { toast({ title: 'Falha ao cadastrar', description: 'Verifique os dados.', variant: 'destructive' }); return; }
-              try { await supabase.from('profiles').insert({ name, email, phone, orgao, role: newRole }); } catch { /* ignore */ }
-              setEmails((prev) => Array.from(new Set([...prev, email])));
-              toast({ title: 'Usuário cadastrado', description: 'E-mail de confirmação enviado.' });
-            }}>
+            <Button className="gradient-primary border-0" onClick={handleCadastrar} disabled={loading}>
               <UserPlus className="h-4 w-4 mr-2" /> Cadastrar Usuário
             </Button>
           </div>
+          
           <Separator />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2">
-              <Label>E-mail para excluir</Label>
-              <Select value={delEmail} onValueChange={(v) => setDelEmail(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o e-mail" />
-                </SelectTrigger>
-                <SelectContent>
-                  {emails.map((e) => (
-                    <SelectItem key={e} value={e}>{e}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          
+          <div className="space-y-4">
+            <h3 className="font-medium flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-destructive" />
+              Excluir Usuário
+            </h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Selecione o usuário para excluir</Label>
+                <Select value={delUserId} onValueChange={(v) => setDelUserId(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o usuário" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {profiles.map((p) => (
+                      <SelectItem key={p.user_id} value={p.user_id}>
+                        {p.name} ({p.email})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
-          <div className="flex justify-end">
-            <Button variant="destructive" onClick={async () => {
-              if (!delEmail) { toast({ title: 'Informe o e-mail', variant: 'destructive' }); return; }
-              try { await supabase.from('profiles').delete().eq('email', delEmail); setEmails((prev) => prev.filter((e) => e !== delEmail)); toast({ title: 'Perfil removido', description: 'Remoção da conta de autenticação requer chave de serviço.' }); }
-              catch { toast({ title: 'Falha ao remover', variant: 'destructive' }); }
-            }}>Excluir Usuário</Button>
+            <div className="flex justify-end">
+              <Button variant="destructive" onClick={handleExcluir} disabled={loading || !delUserId}>
+                Excluir Usuário
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
