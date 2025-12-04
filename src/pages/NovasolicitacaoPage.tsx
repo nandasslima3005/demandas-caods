@@ -119,6 +119,9 @@ export default function NovaSolicitacaoPage() {
           description: 'As alterações foram salvas com sucesso.',
         });
         navigate('/gerenciar');
+      } else {
+        toast({ title: 'Falha ao atualizar', description: String(error.message || error.name || error), variant: 'destructive' });
+        setIsSubmitting(false);
       }
     } else {
       const now = new Date();
@@ -142,7 +145,75 @@ export default function NovaSolicitacaoPage() {
           title: 'Solicitação enviada!',
           description: 'Sua solicitação foi registrada com sucesso. Você pode acompanhá-la em "Minhas Solicitações".',
         });
+        const requestId = (data as { id: string }).id;
+        if (files.length > 0) {
+          const uploads = await Promise.all(
+            files.map(async (file) => {
+              const ext = file.name.split('.').pop() || 'bin';
+              const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+              const path = `${requestId}/${Date.now()}_${clean}`;
+              const up = await supabase.storage.from('attachments').upload(path, file, { upsert: true });
+              if (up.error) return { ok: false, error: up.error };
+              const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
+              const publicUrl = urlData?.publicUrl ?? '';
+              const ins = await supabase.from('attachments').insert({ requestId, name: file.name, type: file.type || ext, size: file.size, url: publicUrl, uploadedAt: new Date().toISOString() });
+              if (ins.error) return { ok: false, error: ins.error };
+              return { ok: true };
+            })
+          );
+          const anyFail = uploads.some((r) => !r.ok);
+          if (anyFail) {
+            try {
+              const key = `attachments:local:${requestId}`;
+              const prevRaw = localStorage.getItem(key);
+              const prev = prevRaw ? JSON.parse(prevRaw) : [];
+              const processed = await Promise.all(
+                files.map(async (file) => {
+                  const dataUrl = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(String(reader.result));
+                    reader.onerror = () => reject(new Error('reader'));
+                    reader.readAsDataURL(file);
+                  });
+                  return { id: `local-${Date.now()}-${file.name}`, requestId, name: file.name, type: file.type, size: file.size, url: dataUrl, uploadedAt: new Date().toISOString() };
+                })
+              );
+              localStorage.setItem(key, JSON.stringify([...processed, ...prev]));
+              toast({ title: 'Alguns anexos foram salvos localmente', description: 'Nem todos os anexos puderam ser enviados ao servidor.', variant: 'default' });
+            } catch { void 0; }
+          }
+        }
         navigate('/minhas-solicitacoes');
+      } else {
+        try {
+          const localId = `local-${Date.now()}`;
+          const localItem = { id: localId, ...insertPayload } as any;
+          const key = 'requests:local';
+          const prevRaw = localStorage.getItem(key);
+          const prev = prevRaw ? JSON.parse(prevRaw) : [];
+          prev.unshift(localItem);
+          localStorage.setItem(key, JSON.stringify(prev));
+          if (files.length > 0) {
+            const keyAtt = `attachments:local:${localId}`;
+            const processed = await Promise.all(
+              files.map(async (file) => {
+                const dataUrl = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(String(reader.result));
+                  reader.onerror = () => reject(new Error('reader'));
+                  reader.readAsDataURL(file);
+                });
+                return { id: `local-${Date.now()}-${file.name}`, requestId: localId, name: file.name, type: file.type, size: file.size, url: dataUrl, uploadedAt: new Date().toISOString() };
+              })
+            );
+            localStorage.setItem(keyAtt, JSON.stringify(processed));
+          }
+          toast({ title: 'Solicitação salva localmente', description: 'O servidor não pôde registrar. A solicitação ficará visível em Minhas Solicitações neste navegador.', variant: 'default' });
+          navigate('/minhas-solicitacoes');
+        } catch {
+          toast({ title: 'Falha ao enviar solicitação', description: String(error.message || error.name || error), variant: 'destructive' });
+        }
+        setIsSubmitting(false);
       }
     }
   };

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { User, Mail, Phone, Building2, Shield } from 'lucide-react';
+import { User, Mail, Phone, Building2, Shield, Camera } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from '@/hooks/use-toast';
@@ -13,6 +13,8 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp
 export default function PerfilPage() {
   const [profile, setProfile] = useState({ name: '', email: '', phone: '', orgao: '' });
   const [role, setRole] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [pwdCurrent, setPwdCurrent] = useState('');
   const [pwdNew, setPwdNew] = useState('');
   const [pwdConfirm, setPwdConfirm] = useState('');
@@ -35,6 +37,7 @@ export default function PerfilPage() {
         phone: (meta.phone as string) ?? '',
         orgao: (meta.orgao as string) ?? '',
       };
+      setAvatarUrl((meta.avatar_url as string) ?? null);
       setRole((meta.role as string) ?? '');
 
       try {
@@ -53,6 +56,8 @@ export default function PerfilPage() {
           });
           const computedRole = (data.role as string) ?? ((meta.role as string) ?? '');
           setRole(computedRole);
+          const avatarFromDb = (data as any).avatar_url as string | undefined;
+          if (avatarFromDb) setAvatarUrl(avatarFromDb);
         } else {
           setProfile(base);
         }
@@ -82,6 +87,81 @@ export default function PerfilPage() {
       setMfaSecret(null);
       setMfaCode('');
     }
+  };
+
+  useEffect(() => {
+    if (!profile.email) return;
+    try {
+      const key = `avatar:${profile.email}`;
+      const stored = localStorage.getItem(key);
+      if (stored) setAvatarUrl(stored);
+    } catch {
+      void 0;
+    }
+  }, [profile.email]);
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUploading(true);
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth.user;
+    if (!user) { setAvatarUploading(false); toast({ title: 'Sessão expirada', variant: 'destructive' }); return; }
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+    if (!uploadError) {
+      const { data: publicUrlData } = await supabase.storage.from('avatars').getPublicUrl(path);
+      const publicUrl = publicUrlData?.publicUrl ?? null;
+      if (publicUrl) {
+        await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+        setAvatarUrl(publicUrl);
+        try { window.dispatchEvent(new CustomEvent('avatar:update', { detail: publicUrl })); } catch { void 0; }
+        try {
+          const { data } = await supabase.from('profiles').select('id').eq('email', profile.email).limit(1).single();
+          if (data?.id) {
+            await supabase.from('profiles').update({ avatar_url: publicUrl, updated_at: new Date().toISOString() }).eq('id', data.id);
+          }
+        } catch { void 0; }
+        toast({ title: 'Avatar atualizado' });
+        setAvatarUploading(false);
+        return;
+      }
+    }
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            const maxSize = 256;
+            const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
+            const w = Math.max(1, Math.round(img.width * ratio));
+            const h = Math.max(1, Math.round(img.height * ratio));
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error('canvas')); return; }
+            ctx.drawImage(img, 0, 0, w, h);
+            const url = canvas.toDataURL('image/jpeg', 0.8);
+            resolve(url);
+          };
+          img.onerror = () => reject(new Error('image'));
+          img.src = String(reader.result);
+        };
+        reader.onerror = () => reject(new Error('reader'));
+        reader.readAsDataURL(file);
+      });
+      const key = `avatar:${profile.email || user.email || 'local'}`;
+      try { localStorage.setItem(key, dataUrl); } catch { void 0; }
+      setAvatarUrl(dataUrl);
+      try { window.dispatchEvent(new CustomEvent('avatar:update', { detail: dataUrl })); } catch { void 0; }
+      toast({ title: 'Avatar atualizado localmente' });
+    } catch {
+      toast({ title: 'Falha ao processar imagem', variant: 'destructive' });
+    }
+    setAvatarUploading(false);
   };
 
   const save = async () => {
@@ -172,10 +252,16 @@ export default function PerfilPage() {
       <Card className="shadow-card">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="h-24 w-24 rounded-full gradient-primary flex items-center justify-center">
-              <span className="text-3xl font-bold text-primary-foreground font-display">
-                {(profile.name || '').split(' ').filter(Boolean).map(p => p[0]).slice(0,2).join('').toUpperCase() || 'U'}
-              </span>
+            <div className="relative h-24 w-24 rounded-full overflow-hidden">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
+              ) : (
+                <div className="h-full w-full gradient-primary flex items-center justify-center">
+                  <span className="text-3xl font-bold text-primary-foreground font-display">
+                    {(profile.name || '').split(' ').filter(Boolean).map(p => p[0]).slice(0,2).join('').toUpperCase() || 'U'}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="text-center sm:text-left">
               <h2 className="text-xl font-bold font-display">{profile.name || profile.email}</h2>
@@ -183,6 +269,13 @@ export default function PerfilPage() {
               <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start">
                 <Shield className="h-4 w-4 text-primary" />
                 <span className="text-sm text-primary font-medium">Conta verificada</span>
+              </div>
+              <div className="mt-3 flex items-center justify-center sm:justify-start gap-2">
+                <input id="avatar-input" type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                <Button variant="outline" size="sm" onClick={() => document.getElementById('avatar-input')?.click()} disabled={avatarUploading}>
+                  <Camera className="h-4 w-4 mr-2" />
+                  {avatarUploading ? 'Enviando...' : 'Alterar Foto'}
+                </Button>
               </div>
             </div>
           </div>

@@ -36,7 +36,14 @@ export default function MinhasSolicitacoesPage() {
         .from('requests')
         .select('*')
         .order('createdAt', { ascending: false });
-      setRequests((data ?? []) as Tables<'requests'>[]);
+      const remote = (data ?? []) as Tables<'requests'>[];
+      let local: Tables<'requests'>[] = [];
+      try {
+        const raw = localStorage.getItem('requests:local');
+        const arr = raw ? JSON.parse(raw) : [];
+        local = Array.isArray(arr) ? arr : [];
+      } catch { local = []; }
+      setRequests([...local, ...remote]);
     };
     load();
   }, []);

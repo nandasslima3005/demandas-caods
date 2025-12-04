@@ -9,6 +9,8 @@ import { supabase } from '@/integrations/supabase/client';
 export function AppLayout() {
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
+  const [email, setEmail] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -16,8 +18,30 @@ export function AppLayout() {
       const meta = data.user?.user_metadata ?? {};
       setName((meta.name as string) ?? data.user?.email ?? '');
       setRole((meta.role as string) ?? '');
+      setEmail(data.user?.email ?? '');
+      setAvatarUrl((meta.avatar_url as string) ?? null);
     };
     load();
+  }, []);
+
+  useEffect(() => {
+    if (!email) return;
+    try {
+      const key = `avatar:${email}`;
+      const stored = localStorage.getItem(key);
+      if (stored) setAvatarUrl(stored);
+    } catch { void 0; }
+  }, [email]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      if (typeof detail === 'string' && detail.length > 0) {
+        setAvatarUrl(detail);
+      }
+    };
+    window.addEventListener('avatar:update', handler as EventListener);
+    return () => { window.removeEventListener('avatar:update', handler as EventListener); };
   }, []);
 
   const initials = (name || '').split(' ').filter(Boolean).map(p => p[0]).slice(0,2).join('').toUpperCase();
@@ -51,9 +75,13 @@ export function AppLayout() {
                   <p className="text-sm font-medium">{name || 'Usuário'}</p>
                   <p className="text-xs text-muted-foreground">{role === 'gestor' ? 'Gestor' : 'Usuário'}</p>
                 </div>
-                <div className="h-9 w-9 rounded-full gradient-primary flex items-center justify-center">
-                  <span className="text-sm font-medium text-primary-foreground">{initials || 'U'}</span>
-                </div>
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="h-9 w-9 rounded-full object-cover" />
+                ) : (
+                  <div className="h-9 w-9 rounded-full gradient-primary flex items-center justify-center">
+                    <span className="text-sm font-medium text-primary-foreground">{initials || 'U'}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

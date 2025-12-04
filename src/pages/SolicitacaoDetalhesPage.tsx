@@ -34,7 +34,13 @@ export default function SolicitacaoDetalhesPage() {
       const { data } = await supabase.from('requests').select('*').eq('id', id).single();
       setRequest((data ?? null) as Tables<'requests'> | null);
       const { data: att } = await supabase.from('attachments').select('*').eq('requestId', id);
-      setAttachments((att ?? []) as Tables<'attachments'>[]);
+      let local: Tables<'attachments'>[] = [];
+      try {
+        const raw = localStorage.getItem(`attachments:local:${id}`);
+        const arr = raw ? JSON.parse(raw) : [];
+        local = Array.isArray(arr) ? arr : [];
+      } catch { local = []; }
+      setAttachments([...(local as Tables<'attachments'>[]), ...((att ?? []) as Tables<'attachments'>[])]);
       const { data: tl } = await supabase
         .from('timeline_events')
         .select('*')
@@ -223,9 +229,21 @@ export default function SolicitacaoDetalhesPage() {
                           {(anexo.size / 1024).toFixed(1)} KB
                         </p>
                       </div>
-                      <Button variant="ghost" size="icon" className="shrink-0">
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      {anexo.url ? (
+                        <a
+                          href={anexo.url}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-muted"
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                      ) : (
+                        <Button variant="ghost" size="icon" className="shrink-0" disabled>
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
