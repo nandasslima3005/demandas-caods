@@ -47,6 +47,40 @@ export default function SolicitacaoDetalhesPage() {
         .eq('requestId', id)
         .order('date', { ascending: true });
       setTimeline((tl ?? []) as Tables<'timeline_events'>[]);
+
+      // Try to sync local attachments for this request
+      if (local.length > 0 && id && !String(id).startsWith('local-')) {
+        const dataUrlToBlob = (dataUrl: string) => {
+          const parts = dataUrl.split(',');
+          const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
+          const bstr = atob(parts[1] || '');
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) u8arr[n] = bstr.charCodeAt(n);
+          return new Blob([u8arr], { type: mime });
+        };
+        const key = `attachments:local:${id}`;
+        const remaining: any[] = [];
+        for (const a of local as any[]) {
+          try {
+            const blob = dataUrlToBlob(a.url);
+            const clean = String(a.name || 'anexo').replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `${id}/${Date.now()}_${clean}`;
+            const up = await supabase.storage.from('attachments').upload(path, blob, { upsert: true });
+            if (up.error) { remaining.push(a); continue; }
+            const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
+            const publicUrl = urlData?.publicUrl ?? '';
+            const ins = await supabase.from('attachments').insert({ requestId: id, name: a.name, type: a.type || 'application/octet-stream', size: a.size || 0, url: publicUrl, uploadedAt: new Date().toISOString() });
+            if (ins.error) { remaining.push(a); }
+          } catch { remaining.push(a); }
+        }
+        try {
+          if (remaining.length > 0) localStorage.setItem(key, JSON.stringify(remaining));
+          else localStorage.removeItem(key);
+        } catch { void 0; }
+        const { data: att2 } = await supabase.from('attachments').select('*').eq('requestId', id);
+        setAttachments([...(remaining as Tables<'attachments'>[]), ...((att2 ?? []) as Tables<'attachments'>[])]);
+      }
     };
     load();
   }, [id]);

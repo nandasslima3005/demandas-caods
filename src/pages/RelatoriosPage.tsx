@@ -20,6 +20,7 @@ import {
   Legend,
 } from 'recharts';
 import { FileText, TrendingUp, Clock, CheckCircle2 } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 export default function RelatoriosPage() {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -28,7 +29,14 @@ export default function RelatoriosPage() {
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase.from('requests').select('*');
-      setRows((data ?? []) as Tables<'requests'>[]);
+      const remote = (data ?? []) as Tables<'requests'>[];
+      let localRows: Tables<'requests'>[] = [];
+      try {
+        const raw = localStorage.getItem('requests:local');
+        const arr = raw ? JSON.parse(raw) : [];
+        localRows = Array.isArray(arr) ? arr : [];
+      } catch { localRows = []; }
+      setRows([...(localRows as Tables<'requests'>[]), ...remote]);
     };
     load();
   }, []);
@@ -46,6 +54,17 @@ export default function RelatoriosPage() {
   const emAnalise = filteredRequests.filter(r => r.status === 'em_analise').length;
   const emAndamento = filteredRequests.filter(r => r.status === 'em_andamento').length;
   const taxaConclusao = total > 0 ? Math.round((concluidos / total) * 100) : 0;
+  const tempoMedioDias = (() => {
+    const concluidas = filteredRequests.filter(r => r.status === 'concluido');
+    if (concluidas.length === 0) return '-';
+    const diffs = concluidas.map(r => {
+      const start = new Date(r.createdAt);
+      const end = new Date(r.updatedAt || r.createdAt);
+      return Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    });
+    const avg = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+    return `${avg.toFixed(1)} dias`;
+  })();
 
   const statusData = [
     { name: 'Pendente', value: pendentes, color: 'hsl(38, 92%, 50%)' },
@@ -73,6 +92,17 @@ export default function RelatoriosPage() {
   const monthlyData = Array.from(monthMap.values())
     .sort((a, b) => a.date.getTime() - b.date.getTime())
     .map((m) => ({ month: m.label, solicitacoes: m.count }));
+
+  // Top Assuntos dinâmico
+  const assuntoCounts = new Map<string, number>();
+  filteredRequests.forEach(r => {
+    const c = assuntoCounts.get(r.assunto) || 0;
+    assuntoCounts.set(r.assunto, c + 1);
+  });
+  const topAssuntos = Array.from(assuntoCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([assunto, count]) => ({ assunto, count, percent: total > 0 ? Math.round((count / total) * 100) : 0 }));
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -117,7 +147,7 @@ export default function RelatoriosPage() {
         />
         <StatCard
           title="Tempo Médio"
-          value="3.2 dias"
+          value={tempoMedioDias}
           icon={Clock}
           variant="info"
         />
@@ -230,38 +260,70 @@ export default function RelatoriosPage() {
         </CardContent>
       </Card>
 
-      {/* Top Assuntos */}
-      <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle className="font-display text-lg">
-            Assuntos Mais Frequentes
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {[
-              { assunto: 'Acesso à Saúde', count: 8, percent: 40 },
-              { assunto: 'Judicialização da Saúde', count: 5, percent: 25 },
-              { assunto: 'Assistência Farmacêutica', count: 4, percent: 20 },
-              { assunto: 'Vigilância Sanitária', count: 2, percent: 10 },
-              { assunto: 'Saúde Mental', count: 1, percent: 5 },
-            ].map((item, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{item.assunto}</span>
-                  <span className="text-muted-foreground">{item.count} solicitações</span>
+        {/* Top Assuntos */}
+        <Card className="shadow-card">
+          <CardHeader>
+            <CardTitle className="font-display text-lg">
+              Assuntos Mais Frequentes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {topAssuntos.map((item, index) => (
+                <div key={index} className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{item.assunto}</span>
+                    <span className="text-muted-foreground">{item.count} solicitações</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full gradient-primary rounded-full transition-all duration-500"
+                      style={{ width: `${item.percent}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full gradient-primary rounded-full transition-all duration-500"
-                    style={{ width: `${item.percent}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Lista de Solicitações filtradas */}
+        <Card className="shadow-card">
+          <CardHeader>
+            <CardTitle className="font-display text-lg">Solicitações Filtradas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Assunto</TableHead>
+                    <TableHead>Órgão</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Prioridade</TableHead>
+                    <TableHead>Data</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredRequests.map((r) => (
+                    <TableRow key={String(r.id)}>
+                      <TableCell className="max-w-[240px] truncate">{r.assunto}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{r.orgaoSolicitante}</TableCell>
+                      <TableCell className="capitalize">{r.status.replace('_', ' ')}</TableCell>
+                      <TableCell className="capitalize">{r.prioridade}</TableCell>
+                      <TableCell>{format(new Date(r.dataSolicitacao), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
+                    </TableRow>
+                  ))}
+                  {filteredRequests.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">Nenhuma solicitação no período selecionado</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
     </div>
   );
 }

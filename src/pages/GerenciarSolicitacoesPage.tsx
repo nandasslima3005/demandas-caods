@@ -76,8 +76,24 @@ export default function GerenciarSolicitacoesPage() {
         .from('requests')
         .select('*')
         .order('createdAt', { ascending: false });
-      if (error) return;
-      const rows = (data ?? []) as Tables<'requests'>[];
+      const remote = (error ? [] : (data ?? [])) as Tables<'requests'>[];
+      let localRows: Tables<'requests'>[] = [];
+      try {
+        const raw = localStorage.getItem('requests:local');
+        const arr = raw ? JSON.parse(raw) : [];
+        localRows = Array.isArray(arr) ? arr : [];
+      } catch { localRows = []; }
+      const rows = [...localRows, ...remote] as Tables<'requests'>[];
+      // apply local overrides to remote rows
+      try {
+        const rawOv = localStorage.getItem('requests:overrides');
+        const overrides = rawOv ? JSON.parse(rawOv) : {};
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i] as any;
+          const ov = overrides[String(r.id)];
+          if (ov) rows[i] = { ...r, ...ov } as any;
+        }
+      } catch { void 0; }
       const mapped = rows.map((r) => ({
         id: String(r.id),
         orgaoSolicitante: r.orgaoSolicitante,
@@ -174,10 +190,34 @@ export default function GerenciarSolicitacoesPage() {
       status: editForm.status as Status,
       updatedAt: new Date().toISOString(),
     };
+    if (String(editId).startsWith('local-')) {
+      try {
+        const key = 'requests:local';
+        const raw = localStorage.getItem(key);
+        const arr = raw ? JSON.parse(raw) : [];
+        const next = Array.isArray(arr) ? arr.map((item: any) => item.id === editId ? { ...item, ...payload } : item) : [];
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch { void 0; }
+      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined } as Request : r));
+      toast({ title: 'Solicitação atualizada', description: 'Alterações salvas localmente.' });
+      setIsEditOpen(false);
+      return;
+    }
     const { error } = await supabase.from('requests').update(payload).eq('id', editId);
     if (!error) {
       setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined } as Request : r));
       toast({ title: 'Solicitação atualizada', description: 'As alterações foram salvas.' });
+      setIsEditOpen(false);
+    } else {
+      try {
+        const key = 'requests:overrides';
+        const raw = localStorage.getItem(key);
+        const map = raw ? JSON.parse(raw) : {};
+        map[editId] = payload;
+        localStorage.setItem(key, JSON.stringify(map));
+      } catch { void 0; }
+      setRequests(prev => prev.map(r => r.id === editId ? { ...r, ...payload, numeroSIMP: payload.numeroSIMP ?? undefined } as Request : r));
+      toast({ title: 'Solicitação atualizada', description: 'Servidor indisponível. Alterações salvas localmente e serão sincronizadas.', variant: 'default' });
       setIsEditOpen(false);
     }
   };

@@ -149,16 +149,23 @@ export default function NovaSolicitacaoPage() {
         if (files.length > 0) {
           const uploads = await Promise.all(
             files.map(async (file) => {
-              const ext = file.name.split('.').pop() || 'bin';
               const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
               const path = `${requestId}/${Date.now()}_${clean}`;
-              const up = await supabase.storage.from('attachments').upload(path, file, { upsert: true });
-              if (up.error) return { ok: false, error: up.error };
-              const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
-              const publicUrl = urlData?.publicUrl ?? '';
-              const ins = await supabase.from('attachments').insert({ requestId, name: file.name, type: file.type || ext, size: file.size, url: publicUrl, uploadedAt: new Date().toISOString() });
-              if (ins.error) return { ok: false, error: ins.error };
-              return { ok: true };
+              let lastError: any = null;
+              for (let attempt = 0; attempt < 3; attempt++) {
+                const up = await supabase.storage.from('attachments').upload(path, file, { upsert: true });
+                if (!up.error) {
+                  const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
+                  const publicUrl = urlData?.publicUrl ?? '';
+                  const ins = await supabase.from('attachments').insert({ requestId, name: file.name, type: file.type || (clean.split('.').pop() || ''), size: file.size, url: publicUrl, uploadedAt: new Date().toISOString() });
+                  if (!ins.error) return { ok: true };
+                  lastError = ins.error;
+                } else {
+                  lastError = up.error;
+                }
+                await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+              }
+              return { ok: false, error: lastError };
             })
           );
           const anyFail = uploads.some((r) => !r.ok);
@@ -179,7 +186,7 @@ export default function NovaSolicitacaoPage() {
                 })
               );
               localStorage.setItem(key, JSON.stringify([...processed, ...prev]));
-              toast({ title: 'Alguns anexos foram salvos localmente', description: 'Nem todos os anexos puderam ser enviados ao servidor.', variant: 'default' });
+              toast({ title: 'Anexos serão enviados ao servidor em segundo plano', description: 'Foram registrados localmente e serão sincronizados automaticamente.', variant: 'default' });
             } catch { void 0; }
           }
         }

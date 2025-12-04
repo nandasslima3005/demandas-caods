@@ -44,6 +44,45 @@ export default function MinhasSolicitacoesPage() {
         local = Array.isArray(arr) ? arr : [];
       } catch { local = []; }
       setRequests([...local, ...remote]);
+
+      // Sync local attachments for remote requests
+      const dataUrlToBlob = (dataUrl: string) => {
+        const parts = dataUrl.split(',');
+        const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
+        const bstr = atob(parts[1] || '');
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) u8arr[n] = bstr.charCodeAt(n);
+        return new Blob([u8arr], { type: mime });
+      };
+      for (const r of remote) {
+        const key = `attachments:local:${r.id}`;
+        let locals: any[] = [];
+        try {
+          const raw = localStorage.getItem(key);
+          const arr = raw ? JSON.parse(raw) : [];
+          locals = Array.isArray(arr) ? arr : [];
+        } catch { locals = []; }
+        if (locals.length === 0) continue;
+        const remaining: any[] = [];
+        for (const a of locals) {
+          try {
+            const blob = dataUrlToBlob(a.url);
+            const clean = String(a.name || 'anexo').replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `${r.id}/${Date.now()}_${clean}`;
+            const up = await supabase.storage.from('attachments').upload(path, blob, { upsert: true });
+            if (up.error) { remaining.push(a); continue; }
+            const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
+            const publicUrl = urlData?.publicUrl ?? '';
+            const ins = await supabase.from('attachments').insert({ requestId: r.id, name: a.name, type: a.type || 'application/octet-stream', size: a.size || 0, url: publicUrl, uploadedAt: new Date().toISOString() });
+            if (ins.error) { remaining.push(a); }
+          } catch { remaining.push(a); }
+        }
+        try {
+          if (remaining.length > 0) localStorage.setItem(key, JSON.stringify(remaining));
+          else localStorage.removeItem(key);
+        } catch { void 0; }
+      }
     };
     load();
   }, []);
