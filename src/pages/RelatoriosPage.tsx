@@ -44,7 +44,7 @@ export default function RelatoriosPage() {
   }, []);
 
   const filteredRequests = rows.filter((r) => {
-    const d = r.dataSolicitacao as string;
+    const d = r.data_solicitacao;
     const afterStart = !startDate || d >= startDate;
     const beforeEnd = !endDate || d <= endDate;
     return afterStart && beforeEnd;
@@ -59,8 +59,8 @@ export default function RelatoriosPage() {
     const concluidas = filteredRequests.filter(r => r.status === 'concluido');
     if (concluidas.length === 0) return '-';
     const diffs = concluidas.map(r => {
-      const start = new Date(r.createdAt);
-      const end = new Date(r.updatedAt || r.createdAt);
+      const start = new Date(r.created_at);
+      const end = new Date(r.updated_at || r.created_at);
       return Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     });
     const avg = diffs.reduce((a, b) => a + b, 0) / diffs.length;
@@ -83,7 +83,7 @@ export default function RelatoriosPage() {
 
   const monthMap = new Map<string, { label: string; date: Date; count: number }>();
   filteredRequests.forEach((r) => {
-    const dt = new Date(r.dataSolicitacao);
+    const dt = new Date(r.data_solicitacao);
     const key = format(dt, 'yyyy-MM');
     const label = format(dt, 'LLL/yyyy', { locale: ptBR });
     const prev = monthMap.get(key);
@@ -329,10 +329,10 @@ export default function RelatoriosPage() {
                   {filteredRequests.map((r) => (
                     <TableRow key={String(r.id)}>
                       <TableCell className="max-w-[240px] truncate">{r.assunto}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{r.orgaoSolicitante}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{r.orgao_solicitante}</TableCell>
                       <TableCell className="capitalize">{r.status.replace('_', ' ')}</TableCell>
                       <TableCell className="capitalize">{r.prioridade}</TableCell>
-                      <TableCell>{format(new Date(r.dataSolicitacao), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
+                      <TableCell>{format(new Date(r.data_solicitacao), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
                     </TableRow>
                   ))}
                   {filteredRequests.length === 0 && (
