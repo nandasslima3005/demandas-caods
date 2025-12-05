@@ -45,19 +45,16 @@ export default function GerenciarUsuariosPage() {
   useEffect(() => {
     const load = async () => {
       const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
-
-      // Get current user role
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userData.user.id)
-        .maybeSingle();
-      
-      setCurrentRole(roleData?.role ?? '');
-
-      // If gestor, load all profiles
-      if (roleData?.role === 'gestor') {
+      const user = userData.user;
+      if (!user) return;
+      const metaRole = (user.user_metadata?.role as string) ?? '';
+      let role = metaRole;
+      if (!role && user.email) {
+        const { data: prof } = await supabase.from('profiles').select('role').eq('email', user.email).limit(1).maybeSingle();
+        role = (prof?.role as string) ?? '';
+      }
+      setCurrentRole(role);
+      if (role === 'gestor') {
         const { data: profilesData } = await supabase
           .from('profiles')
           .select('*')
@@ -126,23 +123,18 @@ export default function GerenciarUsuariosPage() {
       toast({ title: 'Selecione um usuário', variant: 'destructive' });
       return;
     }
-
     setLoading(true);
-    
-    // Delete profile (cascade will handle user_roles)
     const { error } = await supabase
       .from('profiles')
       .delete()
-      .eq('user_id', delUserId);
-
+      .eq('email', delUserId);
     if (error) {
-      toast({ title: 'Falha ao remover', description: 'A remoção completa requer privilégios de administrador.', variant: 'destructive' });
+      toast({ title: 'Falha ao remover', description: 'A remoção da conta de autenticação requer chave de serviço.', variant: 'destructive' });
     } else {
-      setProfiles((prev) => prev.filter((p) => p.user_id !== delUserId));
+      setProfiles((prev) => prev.filter((p) => p.email !== delUserId));
       setDelUserId('');
-      toast({ title: 'Perfil removido com sucesso' });
+      toast({ title: 'Perfil removido' });
     }
-    
     setLoading(false);
   };
 
@@ -236,7 +228,7 @@ export default function GerenciarUsuariosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {profiles.map((p) => (
-                      <SelectItem key={p.user_id} value={p.user_id}>
+                      <SelectItem key={p.email} value={p.email}>
                         {p.name} ({p.email})
                       </SelectItem>
                     ))}

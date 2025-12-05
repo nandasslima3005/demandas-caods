@@ -15,8 +15,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [needConfirm, setNeedConfirm] = useState(false);
   const [resending, setResending] = useState(false);
-  const [showResetPassword, setShowResetPassword] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
   useEffect(() => {
     const check = async () => {
       const { data } = await supabase.auth.getSession();
@@ -61,22 +61,19 @@ export default function LoginPage() {
     toast({ title: 'E-mail enviado', description: 'Verifique sua caixa de entrada para confirmar a conta.' });
   };
 
-  const handleResetPassword = async () => {
+  const resetPassword = async () => {
     if (!email) {
       toast({ title: 'Informe seu e-mail', description: 'Preencha o e-mail institucional.', variant: 'destructive' });
       return;
     }
-    setResending(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/`,
-    });
-    setResending(false);
+    setResetting(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/perfil` });
+    setResetting(false);
     if (error) {
-      toast({ title: 'Erro', description: 'Não foi possível enviar o e-mail de recuperação.', variant: 'destructive' });
+      toast({ title: 'Não foi possível enviar o link', description: 'Tente novamente mais tarde.', variant: 'destructive' });
       return;
     }
-    setResetSent(true);
-    toast({ title: 'E-mail enviado', description: 'Verifique sua caixa de entrada para redefinir a senha.' });
+    toast({ title: 'Link de redefinição enviado', description: 'Verifique sua caixa de entrada.' });
   };
 
   return (
@@ -108,38 +105,16 @@ export default function LoginPage() {
                   </Button>
                 </div>
               )}
-              
-              {!showResetPassword ? (
-                <div className="text-center">
-                  <button 
-                    type="button" 
-                    className="text-sm text-muted-foreground hover:text-primary underline"
-                    onClick={() => setShowResetPassword(true)}
-                  >
-                    Esqueci minha senha
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3 pt-2 border-t">
-                  <p className="text-sm text-muted-foreground text-center">
-                    {resetSent 
-                      ? 'E-mail de recuperação enviado! Verifique sua caixa de entrada.'
-                      : 'Digite seu e-mail acima e clique para receber um link de recuperação.'}
-                  </p>
-                  {!resetSent && (
-                    <Button type="button" variant="outline" className="w-full" onClick={handleResetPassword} disabled={resending}>
-                      {resending ? 'Enviando...' : 'Enviar link de recuperação'}
+                <div className="flex items-center justify-between">
+                  <Button type="button" variant="link" className="px-0" onClick={resetPassword} disabled={resetting}>
+                    {resetting ? 'Enviando...' : 'Esqueci minha senha'}
+                  </Button>
+                  {needConfirm && (
+                    <Button type="button" variant="outline" onClick={resendConfirmation} disabled={resending}>
+                      {resending ? 'Enviando...' : 'Reenviar confirmação'}
                     </Button>
                   )}
-                  <button 
-                    type="button" 
-                    className="text-sm text-muted-foreground hover:text-primary underline w-full text-center"
-                    onClick={() => { setShowResetPassword(false); setResetSent(false); }}
-                  >
-                    Voltar ao login
-                  </button>
                 </div>
-              )}
               </form>
             </CardContent>
           </Card>

@@ -17,9 +17,16 @@ export function AppLayout() {
       const { data } = await supabase.auth.getUser();
       const meta = data.user?.user_metadata ?? {};
       setName((meta.name as string) ?? data.user?.email ?? '');
-      setRole((meta.role as string) ?? '');
+      const metaRole = (meta.role as string) ?? '';
+      setRole(metaRole);
       setEmail(data.user?.email ?? '');
       setAvatarUrl((meta.avatar_url as string) ?? null);
+      if (!metaRole && data.user?.email) {
+        try {
+          const { data: prof } = await supabase.from('profiles').select('role').eq('email', data.user.email).limit(1).maybeSingle();
+          if (prof?.role) setRole(prof.role as string);
+        } catch { void 0; }
+      }
     };
     load();
   }, []);
@@ -75,7 +82,7 @@ export function AppLayout() {
               <div className="flex items-center gap-3 pl-3 border-l border-border">
                 <div className="text-right">
                   <p className="text-sm font-medium">{name || 'Usuário'}</p>
-                  <p className="text-xs text-muted-foreground">{role === 'gestor' ? 'Gestor' : 'Usuário'}</p>
+                  <p className="text-xs text-muted-foreground">{role === 'gestor' ? 'Gestor' : (role === 'requisitante' ? 'Requisitante' : 'Usuário')}</p>
                 </div>
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="Avatar" className="h-9 w-9 rounded-full object-cover border border-border" onError={() => setAvatarUrl(null)} />
