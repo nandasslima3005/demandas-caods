@@ -201,13 +201,7 @@ export default function SolicitacaoDetalhesPage() {
                 date: e.created_at,
                 title: e.title,
                 description: e.description ?? '',
-                status: e.status as any,
-              }))} />
-                id: e.id,
-                date: e.created_at,
-                title: e.title,
-                description: e.description ?? '',
-                status: e.status,
+                status: e.status as Status,
               }))} />
             </CardContent>
           </Card>
