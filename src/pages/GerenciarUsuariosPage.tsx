@@ -98,6 +98,9 @@ export default function GerenciarUsuariosPage() {
     }
 
     if (data.user) {
+      try {
+        await supabase.from('profiles').upsert({ name, email, phone, orgao, role: newRole }, { onConflict: 'email' });
+      } catch { /* ignore */ }
       // Refresh profiles list
       const { data: profilesData } = await supabase
         .from('profiles')
