@@ -18,7 +18,7 @@ import {
 import { Status, Priority, STATUS_LABELS, PRIORITY_LABELS } from '@/types/request';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Search, Filter, ArrowRight, FilePlus, SlidersHorizontal } from 'lucide-react';
+import { Search, Filter, ArrowRight, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function MinhasSolicitacoesPage() {
@@ -32,23 +32,7 @@ export default function MinhasSolicitacoesPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData.user?.id;
-      
-      let query = supabase.from('requests').select('*').order('created_at', { ascending: false });
-      
-      // Filter by user_id if not a gestor
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId ?? '')
-        .maybeSingle();
-      
-      if (roleData?.role !== 'gestor' && userId) {
-        query = query.eq('user_id', userId);
-      }
-      
-      const { data } = await query;
+      const { data } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
       const rows = (data ?? []) as DbRequest[];
       
       // Calculate queue positions
@@ -105,12 +89,7 @@ export default function MinhasSolicitacoesPage() {
             Acompanhe o status das suas demandas
           </p>
         </div>
-        <Button asChild className="gradient-primary border-0 shadow-md">
-          <Link to="/nova-solicitacao">
-            <FilePlus className="h-4 w-4 mr-2" />
-            Nova Solicitação
-          </Link>
-        </Button>
+        
       </div>
 
       <Card className="shadow-card">

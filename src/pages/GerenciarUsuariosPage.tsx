@@ -24,8 +24,7 @@ interface UserRole {
 }
 
 export default function GerenciarUsuariosPage() {
-  const [currentRole, setCurrentRole] = useState<string>('');
-  const [newRole, setNewRole] = useState<'gestor' | 'requisitante'>('requisitante');
+  const [currentRole, setCurrentRole] = useState<string>('gestor');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [delUserId, setDelUserId] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -44,23 +43,11 @@ export default function GerenciarUsuariosPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
-      if (!user) return;
-      const metaRole = (user.user_metadata?.role as string) ?? '';
-      let role = metaRole;
-      if (!role && user.email) {
-        const { data: prof } = await supabase.from('profiles').select('role').eq('email', user.email).limit(1).maybeSingle();
-        role = (prof?.role as string) ?? '';
-      }
-      setCurrentRole(role);
-      if (role === 'gestor') {
-        const { data: profilesData } = await supabase
-          .from('profiles')
-          .select('*')
-          .order('name');
-        setProfiles((profilesData as Profile[]) ?? []);
-      }
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('name');
+      setProfiles((profilesData as Profile[]) ?? []);
     };
     load();
   }, []);
@@ -70,51 +57,26 @@ export default function GerenciarUsuariosPage() {
     const email = (document.getElementById('new-email') as HTMLInputElement)?.value?.trim() || '';
     const phone = (document.getElementById('new-phone') as HTMLInputElement)?.value || '';
     const orgao = (document.getElementById('new-orgao') as HTMLInputElement)?.value?.trim() || '';
-    const password = (document.getElementById('new-password') as HTMLInputElement)?.value || '';
-
-    if (!name || !email || !password) {
-      toast({ title: 'Preencha nome, e-mail e senha', variant: 'destructive' });
+    
+    if (!name || !email) {
+      toast({ title: 'Preencha nome e e-mail', variant: 'destructive' });
       return;
     }
 
     setLoading(true);
-    
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name, phone, orgao, role: newRole },
-        emailRedirectTo: `${window.location.origin}/`
-      }
-    });
-
-    if (error) {
-      toast({ title: 'Falha ao cadastrar', description: error.message, variant: 'destructive' });
-      setLoading(false);
-      return;
-    }
-
-    if (data.user) {
-      try {
-        await supabase.from('profiles').upsert({ name, email, phone, orgao, role: newRole }, { onConflict: 'email' });
-      } catch { /* ignore */ }
-      // Refresh profiles list
-      const { data: profilesData } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('name');
-      setProfiles((profilesData as Profile[]) ?? []);
-      
-      // Clear form
-      (document.getElementById('new-name') as HTMLInputElement).value = '';
-      (document.getElementById('new-email') as HTMLInputElement).value = '';
-      (document.getElementById('new-phone') as HTMLInputElement).value = '';
-      (document.getElementById('new-orgao') as HTMLInputElement).value = '';
-      (document.getElementById('new-password') as HTMLInputElement).value = '';
-      
-      toast({ title: 'Usuário cadastrado com sucesso!' });
-    }
-    
+    try {
+      await supabase.from('profiles').upsert({ name, email, phone, orgao, role: 'gestor' }, { onConflict: 'email' });
+    } catch { }
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('name');
+    setProfiles((profilesData as Profile[]) ?? []);
+    (document.getElementById('new-name') as HTMLInputElement).value = '';
+    (document.getElementById('new-email') as HTMLInputElement).value = '';
+    (document.getElementById('new-phone') as HTMLInputElement).value = '';
+    (document.getElementById('new-orgao') as HTMLInputElement).value = '';
+    toast({ title: 'Perfil cadastrado/atualizado com sucesso' });
     setLoading(false);
   };
 
@@ -138,20 +100,7 @@ export default function GerenciarUsuariosPage() {
     setLoading(false);
   };
 
-  if (currentRole !== 'gestor') {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="font-display text-lg">Acesso negado</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">Somente usuários com papel Gestor podem gerenciar usuários.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -191,19 +140,7 @@ export default function GerenciarUsuariosPage() {
             </div>
             <div className="space-y-2">
               <Label>Tipo de Perfil</Label>
-              <Select value={newRole} onValueChange={(v) => setNewRole(v as 'gestor' | 'requisitante')}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o perfil" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="gestor">Gestor</SelectItem>
-                  <SelectItem value="requisitante">Requisitante</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Senha *</Label>
-              <Input id="new-password" type="password" placeholder="Senha temporária" />
+              <Input value="Gestor" disabled />
             </div>
           </div>
           <div className="flex justify-end">

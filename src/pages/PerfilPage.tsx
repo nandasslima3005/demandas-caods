@@ -16,10 +16,7 @@ export default function PerfilPage() {
   const [role, setRole] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [pwdCurrent, setPwdCurrent] = useState('');
-  const [pwdNew, setPwdNew] = useState('');
-  const [pwdConfirm, setPwdConfirm] = useState('');
-  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdLoading] = useState(false);
   const [mfaOpen, setMfaOpen] = useState(false);
   const [mfaStatus, setMfaStatus] = useState<'inactive' | 'active' | 'enrolling'>('inactive');
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
@@ -74,6 +71,7 @@ export default function PerfilPage() {
       }
     };
     load();
+    return () => { };
   }, []);
 
   type MfaFactor = { id: string; factor_type: string; status: string };
@@ -140,33 +138,7 @@ export default function PerfilPage() {
     toast({ title: 'Perfil atualizado' });
   };
 
-  const changePassword = async () => {
-    if (!profile.email || !pwdCurrent || !pwdNew || !pwdConfirm) {
-      toast({ title: 'Preencha os campos', variant: 'destructive' });
-      return;
-    }
-    if (pwdNew !== pwdConfirm) {
-      toast({ title: 'Senhas não conferem', variant: 'destructive' });
-      return;
-    }
-    setPwdLoading(true);
-    const { error: signError } = await supabase.auth.signInWithPassword({ email: profile.email, password: pwdCurrent });
-    if (signError) {
-      setPwdLoading(false);
-      toast({ title: 'Senha atual incorreta', variant: 'destructive' });
-      return;
-    }
-    const { error } = await supabase.auth.updateUser({ password: pwdNew });
-    setPwdLoading(false);
-    if (error) {
-      toast({ title: 'Erro ao alterar senha', variant: 'destructive' });
-      return;
-    }
-    setPwdCurrent('');
-    setPwdNew('');
-    setPwdConfirm('');
-    toast({ title: 'Senha alterada com sucesso' });
-  };
+  const changePassword = async () => { return; };
 
   const startEnrollMfa = async () => {
     setMfaLoading(true);
@@ -327,45 +299,7 @@ export default function PerfilPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-            <div>
-              <p className="font-medium">Alterar Senha</p>
-              <p className="text-sm text-muted-foreground">
-                Última alteração há 30 dias
-              </p>
-            </div>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline">Alterar</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Alterar Senha</DialogTitle>
-                  <DialogDescription>Informe sua senha atual e a nova senha.</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label>Senha atual</Label>
-                    <Input type="password" value={pwdCurrent} onChange={(e) => setPwdCurrent(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nova senha</Label>
-                    <Input type="password" value={pwdNew} onChange={(e) => setPwdNew(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Confirmar nova senha</Label>
-                    <Input type="password" value={pwdConfirm} onChange={(e) => setPwdConfirm(e.target.value)} />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline">Cancelar</Button>
-                  <Button className="gradient-primary border-0" onClick={changePassword} disabled={pwdLoading}>
-                    {pwdLoading ? 'Salvando...' : 'Salvar'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+          
 
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
             <div>

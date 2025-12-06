@@ -17,12 +17,12 @@ const faqs = [
   {
     question: 'Quanto tempo leva para minha solicitação ser analisada?',
     answer:
-      'O tempo de análise varia conforme a prioridade: solicitações de prioridade baixa levam de 7 a 10 dias úteis, média de 5 a 7 dias, alta de 2 a 3 dias, e urgentes são tratadas em 24 a 48 horas. Fatores como complexidade do caso podem influenciar esse prazo.',
+      'O tempo de análise depende da prioridade definida: baixa leva de 11 a 20 dias úteis, média de 4 a 10 dias úteis e alta de 0 a 3 dias úteis. Este prazo é estimado e pode variar conforme complexidade e volume de demandas.',
   },
   {
     question: 'O que significa cada status da solicitação?',
     answer:
-      'Pendente: aguardando início da análise. Em Análise: equipe técnica está avaliando. Em Andamento: trabalho de elaboração em curso. Aguardando Resposta: necessitamos de informações adicionais. Concluído: demanda finalizada.',
+      'Pendente: aguardando início da análise. Em Análise: equipe técnica está avaliando e o trabalho de elaboração em curso. Concluído: demanda finalizada.',
   },
   {
     question: 'Como posso verificar a posição da minha solicitação na fila?',

@@ -76,9 +76,9 @@ export default function RelatoriosPage() {
   ];
 
   const priorityData = [
-    { name: 'Baixa', value: filteredRequests.filter(r => r.prioridade === 'baixa').length },
-    { name: 'Média', value: filteredRequests.filter(r => r.prioridade === 'media').length },
-    { name: 'Alta', value: filteredRequests.filter(r => r.prioridade === 'alta').length },
+    { name: 'Baixa', value: filteredRequests.filter(r => r.prioridade === 'baixa').length, color: 'hsl(38, 92%, 50%)' },
+    { name: 'Média', value: filteredRequests.filter(r => r.prioridade === 'media').length, color: 'hsl(199, 89%, 48%)' },
+    { name: 'Alta', value: filteredRequests.filter(r => r.prioridade === 'alta').length, color: 'hsl(152, 69%, 40%)' },
   ];
 
   const monthMap = new Map<string, { label: string; date: Date; count: number }>();
@@ -177,7 +177,7 @@ export default function RelatoriosPage() {
       </div>
 
       {/* Charts */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-[0.4fr_0.3fr_0.3fr]">
         {/* Bar Chart */}
         <Card className="shadow-card">
           <CardHeader>
@@ -249,37 +249,47 @@ export default function RelatoriosPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Pie Chart - Prioridade */}
+        <Card className="shadow-card">
+          <CardHeader>
+            <CardTitle className="font-display text-lg">
+              Distribuição por Prioridade
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={priorityData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {priorityData.map((entry, index) => (
+                      <Cell key={`cell-p-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                    }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Priority Distribution */}
-      <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle className="font-display text-lg">
-            Distribuição por Prioridade
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={priorityData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis type="number" tick={false} tickLine={false} axisLine={false} />
-                <YAxis dataKey="name" type="category" className="text-xs" width={80} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                  }}
-                />
-                <Bar dataKey="value" fill="hsl(172, 66%, 40%)" radius={[0, 4, 4, 0]}>
-                  <LabelList dataKey="value" position="insideRight" fill="#ffffff" />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      
 
         {/* Top Assuntos */}
         <Card className="shadow-card">

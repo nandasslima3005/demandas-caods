@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,8 @@ export default function NovaSolicitacaoPage() {
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [orgaos, setOrgaos] = useState<string[]>([]);
+  const [showOrgaos, setShowOrgaos] = useState(false);
   const [formData, setFormData] = useState({
     orgaoSolicitante: '',
     tipoSolicitacao: '' as RequestType | '',
@@ -85,6 +87,21 @@ export default function NovaSolicitacaoPage() {
     if (s3) result += '/' + s3;
     return result;
   };
+
+  useEffect(() => {
+    const loadOrgaos = async () => {
+      try {
+        const res = await fetch(`/solicitantes.csv?ts=${Date.now()}`, { cache: 'no-store' });
+        const txt = await res.text();
+        const lines = txt.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+        if (lines.length === 0) return;
+        const delim = lines[0].includes(';') ? ';' : ',';
+        const values = lines.map((l) => l.split(delim)[0]?.trim()).filter((v) => v && v.length > 0);
+        setOrgaos(Array.from(new Set(values)));
+      } catch {}
+    };
+    loadOrgaos();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,16 +184,8 @@ export default function NovaSolicitacaoPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
       <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate(-1)}
-          className="shrink-0"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
         <div>
           <h1 className="text-2xl font-bold font-display text-foreground">
             Nova Solicitação
@@ -188,7 +197,8 @@ export default function NovaSolicitacaoPage() {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <Card className="shadow-card">
+        <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="shadow-card lg:col-span-2">
           <CardHeader>
             <CardTitle className="font-display text-lg">
               Dados da Solicitação
@@ -221,14 +231,39 @@ export default function NovaSolicitacaoPage() {
 
             <div className="space-y-2">
               <Label htmlFor="orgao">Órgão Solicitante *</Label>
-              <Input
-                id="orgao"
-                placeholder="Ex.: Promotoria de Justiça de Teresina"
-                value={formData.orgaoSolicitante}
-                onChange={(e) =>
-                  setFormData({ ...formData, orgaoSolicitante: e.target.value })
-                }
-              />
+              <div className="relative">
+                <Input
+                  id="orgao"
+                  placeholder="Ex.: Promotoria de Justiça de Teresina"
+                  value={formData.orgaoSolicitante}
+                  onFocus={async () => { setShowOrgaos(true); try { const res = await fetch(`/solicitantes.csv?ts=${Date.now()}`, { cache: 'no-store' }); const txt = await res.text(); const lines = txt.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0); if (lines.length > 0) { const delim = lines[0].includes(';') ? ';' : ','; const values = lines.map((l) => l.split(delim)[0]?.trim()).filter((v) => v && v.length > 0); setOrgaos(Array.from(new Set(values))); } } catch {} }}
+                  onBlur={() => setTimeout(() => setShowOrgaos(false), 100)}
+                  onChange={(e) =>
+                    setFormData({ ...formData, orgaoSolicitante: e.target.value })
+                  }
+                />
+                {showOrgaos && formData.orgaoSolicitante && orgaos.filter((o) => o.toLowerCase().includes(formData.orgaoSolicitante.toLowerCase())).slice(0,6).length > 0 && (
+                  <div className="absolute left-0 right-0 mt-1 z-20 rounded-md border border-border bg-card shadow-sm">
+                    {orgaos
+                      .filter((o) => o.toLowerCase().includes(formData.orgaoSolicitante.toLowerCase()))
+                      .slice(0,6)
+                      .map((o) => (
+                        <button
+                          key={o}
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setFormData({ ...formData, orgaoSolicitante: o });
+                            setShowOrgaos(false);
+                          }}
+                        >
+                          {o}
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -313,88 +348,105 @@ export default function NovaSolicitacaoPage() {
               />
             </div>
 
-            <div className="space-y-3">
-              <Label>Anexos</Label>
-              <div
-                className={cn(
-                  'border-2 border-dashed rounded-lg p-6 text-center transition-colors',
-                  'hover:border-primary/50 hover:bg-primary/5 cursor-pointer'
-                )}
-              >
-                <input
-                  type="file"
-                  multiple
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                  onChange={handleFileChange}
-                  className="hidden"
-                  id="file-upload"
-                />
-                <label htmlFor="file-upload" className="cursor-pointer">
-                  <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Clique para selecionar ou arraste arquivos
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    PDF, DOC, JPG, PNG (máx. 10MB cada)
-                  </p>
-                </label>
-              </div>
-
-              {files.length > 0 && (
-                <div className="space-y-2">
-                  {files.map((file, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
-                    >
-                      <FileText className="h-5 w-5 text-primary shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{file.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {(file.size / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="shrink-0"
-                        onClick={() => removeFile(index)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-card lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="font-display text-lg">
+              Anexos
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div
+              className={cn(
+                'border-2 border-dashed rounded-lg p-6 text-center transition-colors',
+                'hover:border-primary/50 hover:bg-primary/5 cursor-pointer'
               )}
+            >
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={handleFileChange}
+                className="hidden"
+                id="file-upload"
+              />
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Clique para selecionar ou arraste arquivos
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  PDF, DOC, JPG, PNG (máx. 10MB cada)
+                </p>
+              </label>
             </div>
 
-            <div className="flex gap-3 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={() => navigate(-1)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1 gradient-primary border-0"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  'Enviando...'
-                ) : (
-                  <>
-                    <Send className="h-4 w-4 mr-2" />
-                    Enviar Solicitação
-                  </>
-                )}
-              </Button>
+            {files.length > 0 && (
+              <div className="space-y-2">
+                {files.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
+                  >
+                    <FileText className="h-5 w-5 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{file.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {(file.size / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={() => removeFile(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 rounded-lg border border-border p-3">
+              <div className="font-display text-lg text-foreground">Prazo</div>
+              <div className="mt-1 text-sm font-medium">
+                {formData.prioridade === 'baixa'
+                  ? '11 a 20 dias úteis'
+                  : formData.prioridade === 'media'
+                  ? '4 a 10 dias úteis'
+                  : '0 a 3 dias úteis'}
+              </div>
             </div>
           </CardContent>
         </Card>
+        </div>
+        <div className="flex gap-3 pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={() => navigate(-1)}
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            className="flex-1 gradient-primary border-0"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              'Enviando...'
+            ) : (
+              <>
+                <Send className="h-4 w-4 mr-2" />
+                Enviar Solicitação
+              </>
+            )}
+          </Button>
+        </div>
       </form>
     </div>
   );

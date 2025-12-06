@@ -60,21 +60,10 @@ export default function GerenciarSolicitacoesPage() {
     status: 'pendente' as Status,
   });
   const [requests, setRequests] = useState<DbRequest[]>([]);
-  const [role, setRole] = useState<string>('');
+  const [role] = useState<string>('gestor');
 
   useEffect(() => {
-    const loadRole = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .maybeSingle();
-        setRole(roleData?.role ?? '');
-      }
-    };
-    loadRole();
+    
     
     const load = async () => {
       const { data, error } = await supabase
@@ -139,20 +128,12 @@ export default function GerenciarSolicitacoesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (role !== 'gestor') {
-      toast({ title: 'Acesso negado', description: 'Somente gestores podem excluir.', variant: 'destructive' });
-      return;
-    }
     await supabase.from('requests').delete().eq('id', id);
     setRequests(prev => prev.filter(r => r.id !== id));
     toast({ title: 'Solicitação excluída' });
   };
 
   const startEdit = (req: DbRequest) => {
-    if (role !== 'gestor') {
-      toast({ title: 'Acesso negado', description: 'Somente gestores podem editar.', variant: 'destructive' });
-      return;
-    }
     setEditId(req.id);
     setEditForm({
       orgao_solicitante: req.orgao_solicitante,
@@ -168,7 +149,7 @@ export default function GerenciarSolicitacoesPage() {
   };
 
   const saveEdit = async () => {
-    if (!editId || role !== 'gestor') return;
+    if (!editId) return;
     
     const { error } = await supabase.from('requests').update({
       orgao_solicitante: editForm.orgao_solicitante,
@@ -189,13 +170,12 @@ export default function GerenciarSolicitacoesPage() {
       ));
       
       // Add timeline event
-      const { data: userData } = await supabase.auth.getUser();
       await supabase.from('timeline_events').insert({
         request_id: editId,
         title: 'Status Atualizado',
         description: `Status alterado para: ${STATUS_LABELS[editForm.status as Status]}`,
         status: editForm.status,
-        created_by: userData.user?.id,
+        created_by: null,
       });
       
       toast({ title: 'Solicitação atualizada' });
