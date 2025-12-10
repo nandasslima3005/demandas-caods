@@ -33,7 +33,7 @@ export default function MinhasSolicitacoesPage() {
   useEffect(() => {
     const load = async () => {
       await recomputeQueuePositions();
-      const { data } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
+      const { data } = await supabase.from('requests').select('*').order('data_solicitacao', { ascending: false });
       setRequests((data ?? []) as DbRequest[]);
     };
     load();
@@ -84,6 +84,13 @@ export default function MinhasSolicitacoesPage() {
     const matchesPriority = priorityFilter === 'all' || request.prioridade === priorityFilter;
 
     return matchesSearch && matchesStatus && matchesPriority;
+  });
+
+  const [orderBy, setOrderBy] = useState<'asc' | 'desc'>('asc');
+  const sortedRequests = [...filteredRequests].sort((a, b) => {
+    const va = new Date(a.data_solicitacao).getTime();
+    const vb = new Date(b.data_solicitacao).getTime();
+    return orderBy === 'asc' ? va - vb : vb - va;
   });
 
   return (
@@ -161,6 +168,20 @@ export default function MinhasSolicitacoesPage() {
                   </SelectContent>
                 </Select>
 
+                <Select
+                  value={orderBy}
+                  onValueChange={(value) => setOrderBy(value as 'asc' | 'desc')}
+                >
+                  <SelectTrigger className="w-[220px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Ordem cronológica" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="asc">Registro de entrada: mais antigo → mais recente</SelectItem>
+                    <SelectItem value="desc">Registro de entrada: mais recente → mais antigo</SelectItem>
+                  </SelectContent>
+                </Select>
+
                 {(statusFilter !== 'all' || priorityFilter !== 'all') && (
                   <Button
                     variant="ghost"
@@ -180,11 +201,11 @@ export default function MinhasSolicitacoesPage() {
       </Card>
 
       <p className="text-sm text-muted-foreground">
-        {filteredRequests.length} solicitação(ões) encontrada(s)
+        {sortedRequests.length} solicitação(ões) encontrada(s)
       </p>
 
       <div className="space-y-4">
-        {filteredRequests.length === 0 ? (
+        {sortedRequests.length === 0 ? (
           <Card className="shadow-card">
             <CardContent className="py-12 text-center">
               <p className="text-muted-foreground">
@@ -193,7 +214,7 @@ export default function MinhasSolicitacoesPage() {
             </CardContent>
           </Card>
         ) : (
-          filteredRequests.map((request, index) => (
+          sortedRequests.map((request, index) => (
             <Link
               key={request.id}
               to={`/solicitacao/${request.id}`}

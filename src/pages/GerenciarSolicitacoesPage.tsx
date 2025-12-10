@@ -45,7 +45,7 @@ export default function GerenciarSolicitacoesPage() {
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
   type SortKey = 'assunto' | 'orgao_solicitante' | 'numero_sei' | 'data_solicitacao' | 'status' | 'prioridade';
-  const [sortKey, setSortKey] = useState<SortKey>();
+  const [sortKey, setSortKey] = useState<SortKey>('data_solicitacao');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export default function GerenciarSolicitacoesPage() {
       const { data, error } = await supabase
         .from('requests')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('data_solicitacao', { ascending: false });
       if (!error && data) {
         setRequests(data as DbRequest[]);
       }
@@ -268,6 +268,19 @@ export default function GerenciarSolicitacoesPage() {
                     {PRIORITY_LABELS[value]}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={sortOrder}
+              onValueChange={(value) => { setSortKey('data_solicitacao'); setSortOrder(value as 'asc' | 'desc'); }}
+            >
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Ordem cronológica" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="asc">Registro de entrada: mais antigo → mais recente</SelectItem>
+                <SelectItem value="desc">Registro de entrada: mais recente → mais antigo</SelectItem>
               </SelectContent>
             </Select>
           </div>
