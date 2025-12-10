@@ -173,6 +173,7 @@ export default function NovaSolicitacaoPage() {
         }
       }
       
+      await recomputeQueuePositions();
       navigate('/minhas-solicitacoes');
     } else {
       toast({
@@ -182,6 +183,26 @@ export default function NovaSolicitacaoPage() {
       });
       setIsSubmitting(false);
     }
+  };
+
+  const recomputeQueuePositions = async () => {
+    const { data } = await supabase
+      .from('requests')
+      .select('id,status,created_at,posicao_fila')
+      .order('created_at', { ascending: true });
+    const rows = (data ?? []) as any[];
+    const updates: Array<Promise<any>> = [];
+    let pos = 1;
+    for (const r of rows) {
+      const desired = r.status === 'pendente' ? pos++ : null;
+      const current = typeof r.posicao_fila === 'number' ? r.posicao_fila : null;
+      if (current !== desired) {
+        updates.push(
+          supabase.from('requests').update({ posicao_fila: desired }).eq('id', r.id)
+        );
+      }
+    }
+    if (updates.length > 0) await Promise.all(updates);
   };
 
   return (

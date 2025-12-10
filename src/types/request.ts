@@ -56,6 +56,7 @@ export interface DashboardStats {
 export const ASSUNTOS_CNMP = [
   'Atenção Primária à Saúde',
   'Atenção Especializada',
+  'Saúde Mental',
   'Fornecimento de Medicamentos',
   'Fornecimento de Insumos',
   'Financiamento do SUS',

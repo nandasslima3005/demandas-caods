@@ -11,6 +11,11 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { toast } from '@/hooks/use-toast';
 import {
   ArrowLeft,
   Building2,
@@ -28,6 +33,13 @@ export default function SolicitacaoDetalhesPage() {
   const [request, setRequest] = useState<DbRequest | null>(null);
   const [attachments, setAttachments] = useState<DbAttachment[]>([]);
   const [timeline, setTimeline] = useState<DbTimelineEvent[]>([]);
+  const [isCommentOpen, setIsCommentOpen] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [isUpdateOpen, setIsUpdateOpen] = useState(false);
+  const [updateText, setUpdateText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -257,19 +269,166 @@ export default function SolicitacaoDetalhesPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start" onClick={() => setIsCommentOpen(true)}>
                 Adicionar comentário
               </Button>
-              <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start" onClick={() => setIsUploadOpen(true)}>
                 Anexar documento
               </Button>
-              <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start" onClick={() => setIsUpdateOpen(true)}>
                 Solicitar atualização
               </Button>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Adicionar Comentário */}
+      <Sheet open={isCommentOpen} onOpenChange={setIsCommentOpen}>
+        <SheetContent className="sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Adicionar comentário</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-3 py-4">
+            <div className="space-y-2">
+              <Label>Comentário</Label>
+              <Textarea rows={4} value={commentText} onChange={(e) => setCommentText(e.target.value)} />
+            </div>
+          </div>
+          <SheetFooter>
+            <Button variant="outline" onClick={() => setIsCommentOpen(false)}>Cancelar</Button>
+            <Button
+              className="gradient-primary border-0"
+              disabled={isSubmitting || !commentText.trim()}
+              onClick={async () => {
+                if (!id || !commentText.trim()) return;
+                setIsSubmitting(true);
+                const { data: userData } = await supabase.auth.getUser();
+                const userId = userData.user?.id ?? null;
+                const { data: ins, error } = await supabase.from('timeline_events').insert({
+                  request_id: id,
+                  title: 'Comentário',
+                  description: commentText.trim(),
+                  status: request?.status ?? 'pendente',
+                  created_by: userId,
+                }).select('*').single();
+                if (!error && ins) {
+                  setTimeline((prev) => [...prev, ins as DbTimelineEvent]);
+                  setCommentText('');
+                  setIsCommentOpen(false);
+                  toast({ title: 'Comentário adicionado' });
+                } else {
+                  toast({ title: 'Erro ao adicionar comentário', variant: 'destructive' });
+                }
+                setIsSubmitting(false);
+              }}
+            >
+              Salvar
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Anexar Documento */}
+      <Sheet open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+        <SheetContent className="sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Anexar documento</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-3 py-4">
+            <div className="space-y-2">
+              <Label>Selecionar arquivo(s)</Label>
+              <Input type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => { if (e.target.files) setUploadFiles(Array.from(e.target.files)); }} />
+              {uploadFiles.length > 0 && (
+                <p className="text-xs text-muted-foreground">{uploadFiles.length} arquivo(s) selecionado(s)</p>
+              )}
+            </div>
+          </div>
+          <SheetFooter>
+            <Button variant="outline" onClick={() => { setIsUploadOpen(false); setUploadFiles([]); }}>Cancelar</Button>
+            <Button
+              className="gradient-primary border-0"
+              disabled={isSubmitting || uploadFiles.length === 0}
+              onClick={async () => {
+                if (!id || uploadFiles.length === 0) return;
+                setIsSubmitting(true);
+                try {
+                  for (const file of uploadFiles) {
+                    const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+                    const path = `${id}/${Date.now()}_${clean}`;
+                    const { error: uploadError } = await supabase.storage.from('attachments').upload(path, file, { upsert: true });
+                    if (uploadError) continue;
+                    const { data: urlData } = await supabase.storage.from('attachments').getPublicUrl(path);
+                    const { data: ins } = await supabase.from('attachments').insert({
+                      request_id: id,
+                      name: file.name,
+                      type: file.type || 'application/octet-stream',
+                      size: file.size,
+                      url: urlData?.publicUrl ?? '',
+                    }).select('*').single();
+                    if (ins) setAttachments((prev) => [...prev, ins as unknown as DbAttachment]);
+                  }
+                  toast({ title: 'Arquivo(s) anexado(s)' });
+                  setUploadFiles([]);
+                  setIsUploadOpen(false);
+                } catch {
+                  toast({ title: 'Erro ao anexar', variant: 'destructive' });
+                }
+                setIsSubmitting(false);
+              }}
+            >
+              Enviar
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Solicitar Atualização */}
+      <Sheet open={isUpdateOpen} onOpenChange={setIsUpdateOpen}>
+        <SheetContent className="sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Solicitar atualização</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-3 py-4">
+            <div className="space-y-2">
+              <Label>Mensagem</Label>
+              <Textarea rows={4} value={updateText} onChange={(e) => setUpdateText(e.target.value)} />
+            </div>
+          </div>
+          <SheetFooter>
+            <Button variant="outline" onClick={() => setIsUpdateOpen(false)}>Cancelar</Button>
+            <Button
+              className="gradient-primary border-0"
+              disabled={isSubmitting || !updateText.trim()}
+              onClick={async () => {
+                if (!id || !updateText.trim()) return;
+                setIsSubmitting(true);
+                const { data: userData } = await supabase.auth.getUser();
+                const userId = userData.user?.id ?? null;
+                const { data: ins, error } = await supabase.from('timeline_events').insert({
+                  request_id: id,
+                  title: 'Solicitação de atualização',
+                  description: updateText.trim(),
+                  status: request?.status ?? 'pendente',
+                  created_by: userId,
+                }).select('*').single();
+                if (!error && ins) {
+                  setTimeline((prev) => [...prev, ins as DbTimelineEvent]);
+                  setUpdateText('');
+                  setIsUpdateOpen(false);
+                  toast({ title: 'Atualização solicitada' });
+                } else {
+                  toast({ title: 'Erro ao solicitar atualização', variant: 'destructive' });
+                }
+                setIsSubmitting(false);
+              }}
+            >
+              Enviar
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

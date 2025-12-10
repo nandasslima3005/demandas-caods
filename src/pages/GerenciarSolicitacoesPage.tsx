@@ -66,6 +66,7 @@ export default function GerenciarSolicitacoesPage() {
     
     
     const load = async () => {
+      await recomputeQueuePositions();
       const { data, error } = await supabase
         .from('requests')
         .select('*')
@@ -76,6 +77,26 @@ export default function GerenciarSolicitacoesPage() {
     };
     load();
   }, []);
+
+  const recomputeQueuePositions = async () => {
+    const { data } = await supabase
+      .from('requests')
+      .select('id,status,created_at,posicao_fila')
+      .order('created_at', { ascending: true });
+    const rows = (data ?? []) as DbRequest[];
+    const updates: Array<Promise<any>> = [];
+    let pos = 1;
+    for (const r of rows) {
+      const desired = r.status === 'pendente' ? pos++ : null;
+      const current = typeof r.posicao_fila === 'number' ? r.posicao_fila : null;
+      if (current !== desired) {
+        updates.push(
+          supabase.from('requests').update({ posicao_fila: desired }).eq('id', r.id)
+        );
+      }
+    }
+    if (updates.length > 0) await Promise.all(updates);
+  };
 
   const daysInQueue = (req: DbRequest) => {
     if (req.status !== 'pendente' && req.status !== 'em_analise') return null;
@@ -178,6 +199,13 @@ export default function GerenciarSolicitacoesPage() {
         created_by: null,
       });
       
+      await recomputeQueuePositions();
+      const { data } = await supabase
+        .from('requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (data) setRequests(data as DbRequest[]);
+
       toast({ title: 'Solicitação atualizada' });
       setIsEditOpen(false);
     } else {
@@ -428,8 +456,8 @@ export default function GerenciarSolicitacoesPage() {
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    {(['pendente', 'em_analise', 'concluido'] as Status[]).map((k) => (
+                      <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
