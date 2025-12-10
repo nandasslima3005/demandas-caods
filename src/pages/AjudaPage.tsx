@@ -17,7 +17,7 @@ const faqs = [
   {
     question: 'Quanto tempo leva para minha solicitação ser analisada?',
     answer:
-      'O tempo de análise depende da prioridade definida: baixa leva de 11 a 20 dias úteis, média de 4 a 10 dias úteis e alta de 0 a 3 dias úteis. Este prazo é estimado e pode variar conforme complexidade e volume de demandas.',
+      'O prazo depende da prioridade definida: alta leva de 1 a 5 dias, média de 6 a 20 dias e baixa de 21 a 60 dias. Os prazos são estimados e podem variar conforme a complexidade e o volume de demandas.',
   },
   {
     question: 'O que significa cada status da solicitação?',

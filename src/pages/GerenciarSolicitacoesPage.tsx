@@ -79,7 +79,7 @@ export default function GerenciarSolicitacoesPage() {
 
   const daysInQueue = (req: DbRequest) => {
     if (req.status !== 'pendente' && req.status !== 'em_analise') return null;
-    const start = new Date(req.created_at);
+    const start = req.data_solicitacao ? new Date(req.data_solicitacao) : new Date(req.created_at);
     const now = new Date();
     return Math.max(0, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
   };

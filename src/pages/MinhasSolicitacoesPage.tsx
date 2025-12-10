@@ -54,7 +54,7 @@ export default function MinhasSolicitacoesPage() {
 
   const daysInQueue = (req: DbRequest) => {
     if (req.status !== 'pendente' && req.status !== 'em_analise') return null;
-    const start = req.created_at ? new Date(req.created_at) : new Date(req.data_solicitacao);
+    const start = req.data_solicitacao ? new Date(req.data_solicitacao) : new Date(req.created_at);
     const now = new Date();
     const ms = now.getTime() - start.getTime();
     return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));

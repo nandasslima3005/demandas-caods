@@ -40,6 +40,7 @@ export default function NovaSolicitacaoPage() {
   const [formData, setFormData] = useState({
     orgaoSolicitante: '',
     tipoSolicitacao: '' as RequestType | '',
+    dataRecebimento: new Date().toISOString().slice(0, 10),
     numeroSEI: '',
     numeroSIMP: '',
     assunto: '',
@@ -106,7 +107,7 @@ export default function NovaSolicitacaoPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.orgaoSolicitante || !formData.tipoSolicitacao || !formData.numeroSEI || !formData.assunto || !formData.descricao) {
+    if (!formData.orgaoSolicitante || !formData.tipoSolicitacao || !formData.dataRecebimento || !formData.numeroSEI || !formData.assunto || !formData.descricao) {
       toast({
         title: 'Campos obrigatórios',
         description: 'Por favor, preencha todos os campos obrigatórios.',
@@ -125,7 +126,7 @@ export default function NovaSolicitacaoPage() {
       user_id: userId ?? null,
       orgao_solicitante: formData.orgaoSolicitante,
       tipo_solicitacao: formData.tipoSolicitacao as RequestType,
-      data_solicitacao: now.toISOString().slice(0, 10),
+      data_solicitacao: formData.dataRecebimento,
       numero_sei: formData.numeroSEI,
       numero_simp: formData.numeroSIMP || null,
       assunto: formData.assunto,
@@ -208,25 +209,38 @@ export default function NovaSolicitacaoPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label>Tipo de Solicitação *</Label>
-              <Select
-                value={formData.tipoSolicitacao}
-                onValueChange={(value: RequestType) =>
-                  setFormData({ ...formData, tipoSolicitacao: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {REQUEST_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Tipo de Solicitação *</Label>
+                <Select
+                  value={formData.tipoSolicitacao}
+                  onValueChange={(value: RequestType) =>
+                    setFormData({ ...formData, tipoSolicitacao: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REQUEST_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dataRecebimento">Data de Recebimento da Demanda *</Label>
+                <Input
+                  id="dataRecebimento"
+                  type="date"
+                  value={formData.dataRecebimento}
+                  onChange={(e) =>
+                    setFormData({ ...formData, dataRecebimento: e.target.value })
+                  }
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -414,10 +428,10 @@ export default function NovaSolicitacaoPage() {
               <div className="font-display text-lg text-foreground">Prazo</div>
               <div className="mt-1 text-sm font-medium">
                 {formData.prioridade === 'baixa'
-                  ? '11 a 20 dias úteis'
+                  ? '21 a 60 dias'
                   : formData.prioridade === 'media'
-                  ? '4 a 10 dias úteis'
-                  : '0 a 3 dias úteis'}
+                  ? '6 a 20 dias'
+                  : '1 a 5 dias'}
               </div>
             </div>
           </CardContent>
