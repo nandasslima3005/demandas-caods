@@ -65,7 +65,14 @@ export default function GerenciarUsuariosPage() {
 
     setLoading(true);
     try {
-      await supabase.from('profiles').upsert({ name, email, phone, orgao, role: 'gestor' }, { onConflict: 'email' });
+      // Note: profiles table doesn't have a 'role' column - roles are in user_roles table
+      await supabase.from('profiles').upsert({ 
+        name, 
+        email, 
+        phone: phone || null, 
+        orgao: orgao || null,
+        user_id: crypto.randomUUID() // Placeholder - real user_id comes from auth signup
+      }, { onConflict: 'email' });
     } catch { }
     const { data: profilesData } = await supabase
       .from('profiles')

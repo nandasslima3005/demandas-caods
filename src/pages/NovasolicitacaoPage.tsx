@@ -121,9 +121,18 @@ export default function NovaSolicitacaoPage() {
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id;
     
-    const now = new Date();
+    if (!userId) {
+      toast({
+        title: 'Usuário não autenticado',
+        description: 'Você precisa estar logado para criar uma solicitação.',
+        variant: 'destructive',
+      });
+      setIsSubmitting(false);
+      return;
+    }
+    
     const insertPayload = {
-      user_id: userId ?? null,
+      user_id: userId,
       orgao_solicitante: formData.orgaoSolicitante,
       tipo_solicitacao: formData.tipoSolicitacao as RequestType,
       data_solicitacao: formData.dataRecebimento,
@@ -198,7 +207,9 @@ export default function NovaSolicitacaoPage() {
       const current = typeof r.posicao_fila === 'number' ? r.posicao_fila : null;
       if (current !== desired) {
         updates.push(
-          supabase.from('requests').update({ posicao_fila: desired }).eq('id', r.id)
+          (async () => {
+            await supabase.from('requests').update({ posicao_fila: desired }).eq('id', r.id);
+          })()
         );
       }
     }
