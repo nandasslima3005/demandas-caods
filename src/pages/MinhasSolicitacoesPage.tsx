@@ -53,7 +53,9 @@ export default function MinhasSolicitacoesPage() {
       const current = typeof r.posicao_fila === 'number' ? r.posicao_fila : null;
       if (current !== desired) {
         updates.push(
-          supabase.from('requests').update({ posicao_fila: desired }).eq('id', r.id)
+          (async () => {
+            await supabase.from('requests').update({ posicao_fila: desired }).eq('id', r.id);
+          })()
         );
       }
     }
