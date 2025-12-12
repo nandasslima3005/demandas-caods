@@ -118,8 +118,7 @@ export default function NovaSolicitacaoPage() {
 
     setIsSubmitting(true);
     
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
+    const userId = null;
     
     if (!userId) {
       toast({
@@ -160,7 +159,7 @@ export default function NovaSolicitacaoPage() {
         title: 'Solicitação Criada',
         description: 'A solicitação foi registrada no sistema.',
         status: 'pendente',
-        created_by: userId,
+        created_by: null,
       });
       
       // Upload attachments if any
