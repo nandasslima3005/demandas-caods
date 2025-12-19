@@ -55,10 +55,8 @@ export interface DashboardStats {
 
 export const ASSUNTOS_CNMP = [
   'Atenção Primária à Saúde',
-  'Atenção Especializada',
   'Atenção especializada - ambulatorial',
   'Atenção especializada - hospitalar',
-  'Saúde Mental',
   'Saúde mental - atendimento',
   'Saúde mental - serviços',
   'Fornecimento de Medicamentos',
