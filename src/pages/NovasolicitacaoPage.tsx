@@ -118,17 +118,9 @@ export default function NovaSolicitacaoPage() {
 
     setIsSubmitting(true);
     
-    const userId = null;
-    
-    if (!userId) {
-      toast({
-        title: 'Usuário não autenticado',
-        description: 'Você precisa estar logado para criar uma solicitação.',
-        variant: 'destructive',
-      });
-      setIsSubmitting(false);
-      return;
-    }
+    // Get user ID if authenticated (optional)
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id || null;
     
     const insertPayload = {
       user_id: userId,
