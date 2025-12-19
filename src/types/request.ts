@@ -54,10 +54,25 @@ export interface DashboardStats {
 }
 
 export const ASSUNTOS_CNMP = [
+  'Atenção Primária à Saúde',
+  'Atenção Especializada',
   'Atenção especializada - ambulatorial',
   'Atenção especializada - hospitalar',
+  'Saúde Mental',
   'Saúde mental - atendimento',
   'Saúde mental - serviços',
+  'Fornecimento de Medicamentos',
+  'Fornecimento de Insumos',
+  'Financiamento do SUS',
+  'Controle Social',
+  'Transporte',
+  'Vigilância em Saúde',
+  'Regulação - consulta e exames',
+  'Regulação - hospitalar/urgência',
+  'Cirurgia Eletiva',
+  'Projetos',
+  'Oncologia',
+  'Outros',
 ];
 
 export const STATUS_LABELS: Record<Status, string> = {
